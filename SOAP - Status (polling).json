@@ -1,0 +1,98 @@
+{
+  "name": "SOAP - Status (polling)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "soap-status",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "1f039053-4e7a-4502-b8f6-2de475c92512",
+      "name": "Webhook Trigger",
+      "webhookId": "eb3bb026-b554-440b-b7b0-89cd00e57226"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT consulta_id, status, doc_link, doc_name FROM soap_status WHERE consulta_id = $1 LIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ $('Webhook Trigger').item.json.query.id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        208,
+        0
+      ],
+      "id": "cdceb923-2788-48a2-85bc-53521f0fb57e",
+      "name": "Consultar Status",
+      "credentials": {
+        "postgres": {
+          "id": "ZFqRlWq8jSCsp0vY",
+          "name": "Postgres n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.consulta_id ? { status: 'pronto', doc_link: $json.doc_link, doc_name: $json.doc_name } : { status: 'processing' } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        416,
+        0
+      ],
+      "id": "252d4e13-fdc0-43f9-bcee-4b7e077785ef",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Consultar Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar Status": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "75aca5d1-b9fd-495d-83ea-b10e34689eee",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "668ae96acb2ef4098a95658cdbff472c13b75c00707305fdb85bb4dfe0eeee34"
+  },
+  "id": "UZj0JESOzj9NjJSW",
+  "tags": []
+}

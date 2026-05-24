@@ -1,0 +1,802 @@
+{
+  "name": "SOAP → Consulta Urológica → Web",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "soap-web",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "bcf1ead8-02b2-4cd5-b9a4-9829a8408756",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        352,
+        144
+      ],
+      "webhookId": "soap-web-recorder",
+      "notes": "Recebe POST com áudio em multipart/form-data. CORS aberto para qualquer origem (o app HTML pode estar em qualquer host)."
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst validExts = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm'];\n\nfor (const item of items) {\n  const binaryKeys = Object.keys(item.binary || {});\n  if (binaryKeys.length === 0) {\n    throw new Error('Nenhum arquivo binário recebido no webhook. Verifique se o HTML está enviando o áudio como FormData.');\n  }\n\n  // Encontra o primeiro campo binário (geralmente 'audio')\n  const fieldName = binaryKeys[0];\n  const binData = item.binary[fieldName];\n\n  // Normaliza extensão e mimeType para o Whisper aceitar\n  let ext = (binData.fileName || '').split('.').pop().toLowerCase();\n  if (!validExts.includes(ext)) ext = 'webm';\n\n  binData.fileName = `audio.${ext}`;\n  binData.fileExtension = ext;\n  binData.mimeType = ext === 'mp3' ? 'audio/mpeg' \n    : ext === 'webm' ? 'audio/webm'\n    : ext === 'ogg' || ext === 'oga' ? 'audio/ogg'\n    : ext === 'm4a' || ext === 'mp4' ? 'audio/mp4'\n    : ext === 'wav' ? 'audio/wav'\n    : 'audio/webm';\n\n  // Move o binário para 'data' (o Whisper node espera esse nome)\n  if (fieldName !== 'data') {\n    item.binary.data = binData;\n    delete item.binary[fieldName];\n  }\n\n  // Captura metadados úteis do form\n  item.json = {\n    ...item.json,\n    data_hora: new Date().toISOString(),\n    extensao: ext\n  };\n}\n\nreturn items;"
+      },
+      "id": "def3d938-c2e3-4b96-aa7f-2e2dd682f043",
+      "name": "Preparar Áudio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        592,
+        144
+      ],
+      "notes": "Normaliza nome, extensão e mimeType do arquivo binário para o Whisper aceitar. Move para o campo 'data'."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/audio/transcriptions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "whisper-1"
+            },
+            {
+              "name": "language",
+              "value": "pt"
+            },
+            {
+              "name": "prompt",
+              "value": "Consulta médica urológica em português brasileiro. Termos comuns: próstata, HPB, hiperplasia prostática benigna, PSA, ressecção transuretral, RTU, prostatectomia, cistoscopia, biópsia transretal, fusão multiparamétrica, PI-RADS, Gleason, ISUP, IPSS, nictúria, disúria, polaciúria, hematúria, litíase, ureterolitotripsia, varicocele, hidrocele, criptorquidia, fimose, testosterona, ereção, ejaculação."
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "1ab1d0de-fd8c-4fff-a094-a357c66028fa",
+      "name": "Transcrever com Whisper",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        832,
+        144
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "UTeTErM4e9fQ3AI0",
+          "name": "OpenAI Header Auth"
+        }
+      },
+      "notes": "Reutiliza credencial OpenAI existente. Timeout aumentado para áudios longos."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 8000, system: $('Preparar Prompt SOAP (sucinto)').item.json.system_prompt, messages: [{ role: 'user', content: 'Processe esta transcrição de consulta urológica seguindo todas as regras:\\n\\n' + $('Transcrever com Whisper').item.json.text }] }) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "7234cf31-5352-43be-898c-e87844805676",
+      "name": "Gerar SOAP com Claude",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        640,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "eval-prompt",
+              "name": "evaluation_prompt",
+              "type": "string",
+              "value": "Você é um avaliador especialista em qualidade de prontuários médicos urológicos. Receberá um registro SOAP gerado automaticamente a partir da transcrição de uma consulta e deve avaliá-lo quanto à completude clínica.\n\nIMPORTANTE: avalie apenas o que está presente ou ausente — não critique a qualidade da consulta em si, apenas a completude do registro.\n\nRetorne EXCLUSIVAMENTE um JSON válido neste formato, sem texto antes ou depois:\n\n{\n  \"checklist\": {\n    \"S\": {\n      \"identificacao\": true,\n      \"queixa_principal\": true,\n      \"historia_doenca_atual\": true,\n      \"sintomas_urinarios\": true,\n      \"antecedentes\": false,\n      \"medicacoes\": false,\n      \"alergias\": false\n    },\n    \"O\": {\n      \"exame_fisico\": false,\n      \"exames_laboratoriais\": true,\n      \"exames_imagem\": true\n    },\n    \"A\": {\n      \"hipotese_diagnostica\": true,\n      \"estadiamento\": false\n    },\n    \"P\": {\n      \"exames_solicitados\": true,\n      \"tratamento_medicamentoso\": false,\n      \"procedimentos\": false,\n      \"orientacoes\": false,\n      \"retorno\": false\n    }\n  },\n  \"nota\": 6,\n  \"justificativa\": \"...\",\n  \"alertas\": []\n}\n\nO campo \"alertas\" deve conter strings com avisos críticos apenas quando houver ausência de informação que pode impactar segurança do paciente.\n\nA nota segue esta escala:\n9-10: Registro excelente, todas as seções relevantes preenchidas\n7-8: Registro bom, pequenas lacunas não críticas\n5-6: Registro adequado, lacunas moderadas\n3-4: Registro incompleto, lacunas importantes\n1-2: Registro muito incompleto ou inadequado"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "752d6f00-786e-49be-bc3a-7d681c7d5f05",
+      "name": "Preparar Prompt Avaliação",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1648,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1000, system: $('Preparar Prompt Avaliação').item.json.evaluation_prompt, messages: [{ role: 'user', content: 'Avalie este registro SOAP:\\n\\n' + $('Gerar SOAP com Claude (eloquente)').item.json.content[0].text }] }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "357631be-232d-436c-96b7-57175a8ef4f7",
+      "name": "Avaliar Completude do SOAP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1856,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "msg",
+              "name": "mensagem_completa",
+              "type": "string",
+              "value": "={{ \n  $('Gerar SOAP com Claude (eloquente)').item.json.content[0].text \n  + '\\n\\n─────────────────────\\n📊 AVALIAÇÃO DE COMPLETUDE\\n─────────────────────\\n' \n  + (() => {\n      const raw = $('Avaliar Completude do SOAP').item.json.content[0].text;\n      let av;\n      try { av = JSON.parse(raw.replace(/```json\\n?|\\n?```/g, '').trim()); } catch(e) { return '⚠️ Não foi possível avaliar o registro.'; }\n      const icon = v => v ? '✅' : '⬜';\n      const s = av.checklist.S; const o = av.checklist.O; const a = av.checklist.A; const p = av.checklist.P;\n      let txt = '';\n      txt += 'S — SUBJETIVO\\n';\n      txt += icon(s.identificacao) + ' Identificação\\n';\n      txt += icon(s.queixa_principal) + ' Queixa principal\\n';\n      txt += icon(s.historia_doenca_atual) + ' História da doença atual\\n';\n      txt += icon(s.sintomas_urinarios) + ' Sintomas urinários\\n';\n      txt += icon(s.antecedentes) + ' Antecedentes\\n';\n      txt += icon(s.medicacoes) + ' Medicações\\n';\n      txt += icon(s.alergias) + ' Alergias\\n\\n';\n      txt += 'O — OBJETIVO\\n';\n      txt += icon(o.exame_fisico) + ' Exame físico\\n';\n      txt += icon(o.exames_laboratoriais) + ' Exames laboratoriais\\n';\n      txt += icon(o.exames_imagem) + ' Exames de imagem\\n\\n';\n      txt += 'A — AVALIAÇÃO\\n';\n      txt += icon(a.hipotese_diagnostica) + ' Hipótese diagnóstica\\n';\n      txt += icon(a.estadiamento) + ' Estadiamento\\n\\n';\n      txt += 'P — PLANO\\n';\n      txt += icon(p.exames_solicitados) + ' Exames solicitados\\n';\n      txt += icon(p.tratamento_medicamentoso) + ' Tratamento medicamentoso\\n';\n      txt += icon(p.procedimentos) + ' Procedimentos\\n';\n      txt += icon(p.orientacoes) + ' Orientações\\n';\n      txt += icon(p.retorno) + ' Retorno\\n\\n';\n      txt += 'NOTA: ' + av.nota + '/10\\n';\n      txt += av.justificativa;\n      if (av.alertas && av.alertas.length > 0) {\n        txt += '\\n\\n⚠️ ALERTAS CLÍNICOS:\\n';\n        av.alertas.forEach(al => txt += '• ' + al + '\\n');\n      }\n      return txt;\n    })()\n}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6d4da1ec-018b-4ea9-86d5-c00731014173",
+      "name": "Formatar Mensagem Final",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2096,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pega o texto completo (SOAP + avaliação)\nconst texto = $('Formatar Mensagem Final').item.json.mensagem_completa;\n\n// Garante que termina com \\n para inserção limpa\nconst fullText = texto.endsWith('\\n') ? texto : texto + '\\n';\n\n// O Google Docs sempre começa no índice 1\n// Vamos inserir todo o texto de uma vez, depois aplicar estilos por posição\n\nconst requests = [];\n\n// 1. Inserir todo o texto no índice 1\nrequests.push({\n  insertText: {\n    location: { index: 1 },\n    text: fullText\n  }\n});\n\n// 2. Estilo base: fonte 10, preto, em todo o documento\nrequests.push({\n  updateTextStyle: {\n    range: { startIndex: 1, endIndex: fullText.length + 1 },\n    textStyle: {\n      fontSize: { magnitude: 10, unit: 'PT' },\n      foregroundColor: { color: { rgbColor: { red: 0, green: 0, blue: 0 } } }\n    },\n    fields: 'fontSize,foregroundColor'\n  }\n});\n\n// 3. Encontrar a linha de data/hora (primeira linha) e aplicar fonte 12 preto\nconst linhas = fullText.split('\\n');\nconst primeiraLinha = linhas[0];\n// Detecta se a primeira linha parece data/hora (contém / ou :)\nif (/\\d{2}\\/\\d{2}\\/\\d{4}/.test(primeiraLinha)) {\n  requests.push({\n    updateTextStyle: {\n      range: { startIndex: 1, endIndex: primeiraLinha.length + 1 },\n      textStyle: { fontSize: { magnitude: 12, unit: 'PT' } },\n      fields: 'fontSize'\n    }\n  });\n}\n\n// 4. Encontrar cada \"S:\", \"O:\", \"A:\", \"P:\" no início de linha\n//    e aplicar azul-marinho + fonte 12 nos 2 caracteres (letra + dois-pontos)\nconst azulMarinho = { red: 0, green: 0, blue: 0.5 };\nlet offset = 0; // posição corrente no texto (0-based)\n\nfor (const linha of linhas) {\n  // Verifica se a linha começa com S: O: A: P: (maiúsculas, seguido de dois-pontos)\n  const match = linha.match(/^([SOAP]):/);\n  if (match) {\n    // Posição no documento: offset + 1 (Docs é 1-based)\n    const startIdx = offset + 1;\n    const endIdx = startIdx + 2; // letra + \":\"\n    requests.push({\n      updateTextStyle: {\n        range: { startIndex: startIdx, endIndex: endIdx },\n        textStyle: {\n          fontSize: { magnitude: 12, unit: 'PT' },\n          foregroundColor: { color: { rgbColor: azulMarinho } },\n          bold: true\n        },\n        fields: 'fontSize,foregroundColor,bold'\n      }\n    });\n  }\n  // Avança o offset: comprimento da linha + 1 (o \\n)\n  offset += linha.length + 1;\n}\n\nreturn [{\n  json: {\n    requests: requests,\n    titulo: 'Consulta_SOAP_Web_' + $now.toFormat('dd-MM-yyyy_HH-mm')\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2304,
+        -144
+      ],
+      "id": "febcbe87-a4da-47a8-9a70-8f81a6b86d86",
+      "name": "Montar Conteúdo Docs"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://docs.googleapis.com/v1/documents",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDocsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ title: $json.titulo }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2336,
+        464
+      ],
+      "id": "bed23427-4010-41d9-861c-5c0889bc8c99",
+      "name": "Criar Documento",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "I5DU8Zzzpd8BE3cK",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://docs.googleapis.com/v1/documents/' + $json.documentId + ':batchUpdate' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDocsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ requests: $('Montar Conteúdo Docs').item.json.requests }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2768,
+        -144
+      ],
+      "id": "5bf97c7d-add9-417d-9f6a-2e7a73eea2e9",
+      "name": "Aplicar Formatação",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "I5DU8Zzzpd8BE3cK",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $('Criar Documento').item.json.documentId + '?addParents=1xuxSA8wtspEEIQX7rOEo0CtUS1-n0gla&removeParents=root' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDocsOAuth2Api",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3024,
+        112
+      ],
+      "id": "dac2cff0-ceea-4032-9b50-c0b62ff14e59",
+      "name": "Mover para Pasta",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "I5DU8Zzzpd8BE3cK",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "08a5fa69-67e8-4d4a-b605-d8dc5349f38e",
+              "name": "mensagem_completa",
+              "value": "={{ $('Gerar SOAP com Claude (eloquente)').item.json.content[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1824,
+        464
+      ],
+      "id": "b140cb3b-d757-41c8-af21-e52e5921aa30",
+      "name": "Formatar Mensagem Final (sem avaliação)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://docs.googleapis.com/v1/documents/' + $json.documentId + ':batchUpdate' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDocsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ requests: $('Montar Conteúdo Docs (sem avaliação)').item.json.requests }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2576,
+        464
+      ],
+      "id": "955a9f33-e4bf-44b7-bbfe-d601fc71bd7a",
+      "name": "Aplicar Formatação (sem avaliação)",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "I5DU8Zzzpd8BE3cK",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pega o texto completo (SOAP + avaliação)\nconst texto = $input.item.json.mensagem_completa;\n\n// Garante que termina com \\n para inserção limpa\nconst fullText = texto.endsWith('\\n') ? texto : texto + '\\n';\n\n// O Google Docs sempre começa no índice 1\n// Vamos inserir todo o texto de uma vez, depois aplicar estilos por posição\n\nconst requests = [];\n\n// 1. Inserir todo o texto no índice 1\nrequests.push({\n  insertText: {\n    location: { index: 1 },\n    text: fullText\n  }\n});\n\n// 2. Estilo base: fonte 10, preto, em todo o documento\nrequests.push({\n  updateTextStyle: {\n    range: { startIndex: 1, endIndex: fullText.length + 1 },\n    textStyle: {\n      fontSize: { magnitude: 10, unit: 'PT' },\n      foregroundColor: { color: { rgbColor: { red: 0, green: 0, blue: 0 } } }\n    },\n    fields: 'fontSize,foregroundColor'\n  }\n});\n\n// 3. Encontrar a linha de data/hora (primeira linha) e aplicar fonte 12 preto\nconst linhas = fullText.split('\\n');\nconst primeiraLinha = linhas[0];\n// Detecta se a primeira linha parece data/hora (contém / ou :)\nif (/\\d{2}\\/\\d{2}\\/\\d{4}/.test(primeiraLinha)) {\n  requests.push({\n    updateTextStyle: {\n      range: { startIndex: 1, endIndex: primeiraLinha.length + 1 },\n      textStyle: { fontSize: { magnitude: 12, unit: 'PT' } },\n      fields: 'fontSize'\n    }\n  });\n}\n\n// 4. Encontrar cada \"S:\", \"O:\", \"A:\", \"P:\" no início de linha\n//    e aplicar azul-marinho + fonte 12 nos 2 caracteres (letra + dois-pontos)\nconst azulMarinho = { red: 0, green: 0, blue: 0.5 };\nlet offset = 0; // posição corrente no texto (0-based)\n\nfor (const linha of linhas) {\n  // Verifica se a linha começa com S: O: A: P: (maiúsculas, seguido de dois-pontos)\n  const match = linha.match(/^([SOAP]):/);\n  if (match) {\n    // Posição no documento: offset + 1 (Docs é 1-based)\n    const startIdx = offset + 1;\n    const endIdx = startIdx + 2; // letra + \":\"\n    requests.push({\n      updateTextStyle: {\n        range: { startIndex: startIdx, endIndex: endIdx },\n        textStyle: {\n          fontSize: { magnitude: 12, unit: 'PT' },\n          foregroundColor: { color: { rgbColor: azulMarinho } },\n          bold: true\n        },\n        fields: 'fontSize,foregroundColor,bold'\n      }\n    });\n  }\n  // Avança o offset: comprimento da linha + 1 (o \\n)\n  offset += linha.length + 1;\n}\n\nreturn [{\n  json: {\n    requests: requests,\n    titulo: 'Consulta_SOAP_Web_' + $now.toFormat('dd-MM-yyyy_HH-mm')\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        464
+      ],
+      "id": "b89136dd-d9b3-4849-af30-b1163071f784",
+      "name": "Montar Conteúdo Docs (sem avaliação)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "soap-prompt",
+              "name": "system_prompt",
+              "type": "string",
+              "value": "=Você é um especialista em transcrição médica e documentação clínica, com expertise em Urologia. Sua tarefa é transformar a transcrição bruta de uma consulta urológica em um registro estruturado no formato SOAP CONCISO E TELEGRÁFICO de prontuário ambulatorial brasileiro, com filtros de relevância clínica e anonimização de dados pessoais.\n\n## ESTILO\n\nUse estilo TELEGRÁFICO de prontuário ambulatorial. Frases muito curtas, sem narrativa, com abreviações médicas comuns. NÃO escreva em parágrafos extensos. NÃO repita informação.\n\nAbreviações comuns (use quando apropriado):\n- CaP = câncer de próstata\n- HPB = hiperplasia prostática benigna\n- LUTS = sintomas do trato urinário inferior\n- ITU = infecção do trato urinário\n- AD / ME / BE = ápice direito / meio / base esquerda (locais de biópsia)\n- Sol = solicitado\n- pré-op = pré-operatório\n- pós-op = pós-operatório\n- TR = toque retal\n- USG = ultrassom\n- TC = tomografia\n- RMN ou RM = ressonância magnética\n- RMN MP = ressonância multiparamétrica\n- AP = anatomopatológico\n- BMx = biópsia\n- mx = metástase\n- DE = disfunção erétil\n- ATM = androgenoterapia / terapia de privação androgênica\n\n## REGRAS DE ANONIMIZAÇÃO (LGPD)\n\nSubstitua TODAS as ocorrências de identificadores pessoais:\n- Nomes próprios do paciente, médico, familiares, terceiros → [PACIENTE], [MÉDICO], [MÉDICO COLABORADOR], [FAMILIAR], [TERCEIRO]\n- CPF, RG, telefones, e-mails → [DADO PESSOAL]\n- Endereços → [ENDEREÇO]\n- Hospitais/clínicas/laboratórios → [INSTITUIÇÃO]\n- Datas de nascimento → preservar apenas a idade\n\nPRESERVE: idade, sexo, profissão (se relevante para queixa), antecedentes familiares (sem nomes).\n\n## CRITÉRIOS DE FILTRAGEM\n\nEXCLUA: cumprimentos, despedidas, conversas sobre clima/política/vida pessoal alheia à queixa, pausas, hesitações, interrupções administrativas (telefone, secretária, agendamento, valores, convênio), comentários para si mesmo durante exame, qualquer diálogo não-clínico.\n\nINCLUA: queixas, sintomas, HDA, hábitos relevantes, antecedentes, medicações, alergias, achados de exame físico verbalizados, resultados de exames, hipóteses, condutas, prescrições.\n\n## ESTRUTURA DE SAÍDA\n\nUse EXATAMENTE este formato visual em texto puro. Letras S/O/A/P em maiúscula seguidas de dois pontos e dois espaços (S:  texto).\n\nDATA E HORA: [se mencionados na transcrição, formato DD/MM/YYYY HH:MM; se só data: DD/MM/YYYY; se nada: omita esta linha]\n\nS:  [Subjetivo telegráfico: idade e sexo se relevantes na primeira menção, queixa principal e história resumida. Uma a três linhas no máximo.]\nO:  [Objetivo conciso: valores principais e achados de exame físico verbalizados. Ex: \"PSA: 4,96 ng/mL  TR: próstata fibroelástica ~30g, sem nódulos\". Se não houver, omita esta linha.]\n\n[BLOCOS DE EXAMES COMPLEMENTARES — apenas se houver exames detalhados mencionados na consulta. Cada exame em seu próprio bloco. Repita o padrão abaixo para cada exame:]\n\n================================\n##### NOME DO EXAME #####\nData: DD/MM/YYYY | Local: [INSTITUIÇÃO] | Profissional: [MÉDICO COLABORADOR]\n[Laudo conciso com achados clinicamente relevantes. Para AP de biópsia prostática: incluir Gleason, ISUP, percentual, localização. Para imagem: principais achados, PI-RADS se aplicável.]\n##################################\n================================\n\nA:  [Avaliação telegráfica: hipóteses diagnósticas e estadiamento se aplicável. Uma linha quando possível.]\nP:  [Plano telegráfico: exames solicitados, prescrições com posologia abreviada, procedimentos indicados, orientações principais, retorno. Uma a três linhas.]\n\n## FORMATAÇÃO DE EXAMES LABORATORIAIS\n\nQuando colocar valor laboratorial em O ou em bloco: NOME: VALOR UNIDADE\n\nUse unidades padrão brasileiras:\n- PSA total / livre: ng/mL\n- Testosterona: ng/dL\n- Creatinina: mg/dL\n- Hemoglobina: g/dL\n- Glicemia / HbA1c: mg/dL / %\n\n## REGRAS DE INTEGRIDADE\n\n1. NÃO invente nada — se algo não foi dito, omita o campo\n2. NÃO interprete além do que o médico falou\n3. NÃO complete dados com conhecimento médico geral\n4. Ambiguidade → [INAUDÍVEL] ou [AMBÍGUO: X ou Y]\n5. Use terminologia médica precisa em português\n6. SEJA CONCISO — registros clínicos não são narrativas\n7. Use abreviações comuns onde apropriado\n8. Se a transcrição não tiver conteúdo clínico real, retorne apenas: \"Transcrição insuficiente para gerar registro SOAP.\""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "edbb3ef2-a197-4bfb-9a19-3f50e6d5d1c9",
+      "name": "Preparar Prompt SOAP (sucinto)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        432,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "soap-prompt",
+              "name": "system_prompt",
+              "type": "string",
+              "value": "=Você é um especialista em transcrição médica e documentação clínica, com expertise em Urologia. Sua tarefa é transformar a transcrição bruta de uma consulta urológica em um registro estruturado no formato SOAP CONCISO E TELEGRÁFICO de prontuário ambulatorial brasileiro, com filtros de relevância clínica e anonimização de dados pessoais.\n\n## ESTILO\n\nUse estilo de prontuário médico ambulatorial brasileiro — claro, objetivo e tecnicamente preciso, mas com frases completas e sem abreviações excessivas. Evite telegrafismo extremo. Prefira clareza à brevidade quando houver escolha.\n\nAbreviações PERMITIDAS (use apenas estas):\n- CaP = câncer de próstata\n- HPB = hiperplasia prostática benigna\n- Sol. = solicitado\n- pós-op = pós-operatório\n- pré-op = pré-operatório\n- TR = toque retal\n- USG = ultrassom\n- TC = tomografia\n- RM ou RMN MP = ressonância (multiparamétrica)\n- AP = anatomopatológico\n\nNÃO abrevie: nomes de medicamentos, sintomas, achados de exame, condutas, orientações. Escreva por extenso.\n\nExemplos de estilo:\n- RUIM (telegráfico demais): \"Pac. masc. 74a. Pós-op prostatectomia. Continência ok. PSA ok.\"\n- BOM (eloquente): \"Paciente masculino, 74 anos, em seguimento pós-operatório de prostatectomia radical. Refere continência urinária preservada e função erétil presente com uso de Tadalafila diária.\"\n\n## REGRAS DE ANONIMIZAÇÃO (LGPD)\n\nSubstitua TODAS as ocorrências de identificadores pessoais:\n- Nomes próprios do paciente, médico, familiares, terceiros → [PACIENTE], [MÉDICO], [MÉDICO COLABORADOR], [FAMILIAR], [TERCEIRO]\n- CPF, RG, telefones, e-mails → [DADO PESSOAL]\n- Endereços → [ENDEREÇO]\n- Hospitais/clínicas/laboratórios → [INSTITUIÇÃO]\n- Datas de nascimento → preservar apenas a idade\n\nPRESERVE: idade, sexo, profissão (se relevante para queixa), antecedentes familiares (sem nomes).\n\n## CRITÉRIOS DE FILTRAGEM\n\nEXCLUA: cumprimentos, despedidas, conversas sobre clima/política/vida pessoal alheia à queixa, pausas, hesitações, interrupções administrativas (telefone, secretária, agendamento, valores, convênio), comentários para si mesmo durante exame, qualquer diálogo não-clínico.\n\nINCLUA: queixas, sintomas, HDA, hábitos relevantes, antecedentes, medicações, alergias, achados de exame físico verbalizados, resultados de exames, hipóteses, condutas, prescrições.\n\n## ESTRUTURA DE SAÍDA\n\nUse EXATAMENTE este formato visual em texto puro. Letras S/O/A/P em maiúscula seguidas de dois pontos e dois espaços (S:  texto).\n\nDATA E HORA: [se mencionados na transcrição, formato DD/MM/YYYY HH:MM; se só data: DD/MM/YYYY; se nada: omita esta linha]\n\nS:  [Subjetivo telegráfico: idade e sexo se relevantes na primeira menção, queixa principal e história resumida. Uma a três linhas no máximo.]\nO:  [Objetivo conciso: valores principais e achados de exame físico verbalizados. Ex: \"PSA: 4,96 ng/mL  TR: próstata fibroelástica ~30g, sem nódulos\". Se não houver, omita esta linha.]\n\n[BLOCOS DE EXAMES COMPLEMENTARES — apenas se houver exames detalhados mencionados na consulta. Cada exame em seu próprio bloco. Repita o padrão abaixo para cada exame:]\n\n================================\n##### NOME DO EXAME #####\nData: DD/MM/YYYY | Local: [INSTITUIÇÃO] | Profissional: [MÉDICO COLABORADOR]\n[Laudo conciso com achados clinicamente relevantes. Para AP de biópsia prostática: incluir Gleason, ISUP, percentual, localização. Para imagem: principais achados, PI-RADS se aplicável.]\n##################################\n================================\n\nA:  [Avaliação telegráfica: hipóteses diagnósticas e estadiamento se aplicável. Uma linha quando possível.]\nP:  [Plano telegráfico: exames solicitados, prescrições com posologia abreviada, procedimentos indicados, orientações principais, retorno. Uma a três linhas.]\n\n## FORMATAÇÃO DE EXAMES LABORATORIAIS\n\nQuando colocar valor laboratorial em O ou em bloco: NOME: VALOR UNIDADE\n\nUse unidades padrão brasileiras:\n- PSA total / livre: ng/mL\n- Testosterona: ng/dL\n- Creatinina: mg/dL\n- Hemoglobina: g/dL\n- Glicemia / HbA1c: mg/dL / %\n\n## REGRAS DE INTEGRIDADE\n\n1. NÃO invente nada — se algo não foi dito, omita o campo\n2. NÃO interprete além do que o médico falou\n3. NÃO complete dados com conhecimento médico geral\n4. Ambiguidade → [INAUDÍVEL] ou [AMBÍGUO: X ou Y]\n5. Use terminologia médica precisa em português\n6. SEJA CONCISO — registros clínicos não são narrativas\n7. Use abreviações comuns onde apropriado\n8. Se a transcrição não tiver conteúdo clínico real, retorne apenas: \"Transcrição insuficiente para gerar registro SOAP.\""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bd0bf82c-d3fb-44ee-9726-7a7237ae253a",
+      "name": "Preparar Prompt SOAP (eloquente)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1088,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "content": "# Sem avaliação de completude do SOAP \n",
+        "height": 368,
+        "width": 1152
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1664,
+        336
+      ],
+      "typeVersion": 1,
+      "id": "47d6b876-7038-4c65-9d95-5ac6086baa12",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 8000, system: $('Preparar Prompt SOAP (eloquente)').item.json.system_prompt, messages: [{ role: 'user', content: 'Processe esta transcrição de consulta urológica seguindo todas as regras:\\n\\n' + $('Transcrever com Whisper').item.json.text }] }) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "888aa518-2869-473e-b181-92a8b2434453",
+      "name": "Gerar SOAP com Claude (eloquente)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1296,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "content": "# Com avaliação de completude do SOAP \n",
+        "height": 368,
+        "width": 1408
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1584,
+        -288
+      ],
+      "typeVersion": 1,
+      "id": "3264c98a-4ef8-4e96-9aac-c31df9e61901",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "# SOAP Sucinto\n",
+        "height": 288,
+        "width": 512,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        352,
+        496
+      ],
+      "typeVersion": 1,
+      "id": "ffb36e86-64d2-4fa5-80e4-f980ac41f377",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "# SOAP Eloquente\n",
+        "height": 288,
+        "width": 512,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1008,
+        80
+      ],
+      "typeVersion": 1,
+      "id": "e7943e23-429a-4449-870e-8521e210b95a",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "358589c9-0b6e-4d24-9eca-bbbda7797b17",
+              "name": "consulta_id",
+              "value": "={{ $('Webhook Trigger').item.json.body.consulta_id }}",
+              "type": "string"
+            },
+            {
+              "id": "455aad0c-e0cb-4991-862f-b77390379bb3",
+              "name": "=doc_link",
+              "value": "={{ 'https://docs.google.com/document/d/' + $('Criar Documento').item.json.documentId + '/edit' }}",
+              "type": "string"
+            },
+            {
+              "id": "7a37a969-50f4-4768-812d-b67c2c87a83b",
+              "name": "=doc_name",
+              "value": "={{ $('Criar Documento').item.json.title }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3232,
+        112
+      ],
+      "id": "1ed35110-45df-4161-9ce7-441457b5a5a3",
+      "name": "Montar Link do Doc"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO soap_status (consulta_id, status, doc_link, doc_name)\nVALUES ($1, 'pronto', $2, $3)\nON CONFLICT (consulta_id) \nDO UPDATE SET status = 'pronto', doc_link = $2, doc_name = $3;",
+        "options": {
+          "queryReplacement": "={{ $json.consulta_id }}, {{ $json.doc_link }}, {{ $json.doc_name }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3440,
+        112
+      ],
+      "id": "28593563-413d-4bc9-b100-d2455d0f1565",
+      "name": "Salvar Status no Postgres",
+      "credentials": {
+        "postgres": {
+          "id": "ZFqRlWq8jSCsp0vY",
+          "name": "Postgres n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://docs.googleapis.com/v1/documents",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDocsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ title: $json.titulo }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2544,
+        -144
+      ],
+      "id": "440d1acd-3644-4a1a-9c5a-99eb3ba80542",
+      "name": "Criar Documento1",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "I5DU8Zzzpd8BE3cK",
+          "name": "Google Docs account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Preparar Áudio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Áudio": {
+      "main": [
+        [
+          {
+            "node": "Transcrever com Whisper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcrever com Whisper": {
+      "main": [
+        [
+          {
+            "node": "Preparar Prompt SOAP (eloquente)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar SOAP com Claude": {
+      "main": [
+        []
+      ]
+    },
+    "Preparar Prompt Avaliação": {
+      "main": [
+        [
+          {
+            "node": "Avaliar Completude do SOAP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Avaliar Completude do SOAP": {
+      "main": [
+        [
+          {
+            "node": "Formatar Mensagem Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Mensagem Final": {
+      "main": [
+        [
+          {
+            "node": "Montar Conteúdo Docs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Conteúdo Docs": {
+      "main": [
+        [
+          {
+            "node": "Criar Documento1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Documento": {
+      "main": [
+        [
+          {
+            "node": "Aplicar Formatação (sem avaliação)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aplicar Formatação": {
+      "main": [
+        []
+      ]
+    },
+    "Formatar Mensagem Final (sem avaliação)": {
+      "main": [
+        [
+          {
+            "node": "Montar Conteúdo Docs (sem avaliação)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Conteúdo Docs (sem avaliação)": {
+      "main": [
+        [
+          {
+            "node": "Criar Documento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aplicar Formatação (sem avaliação)": {
+      "main": [
+        [
+          {
+            "node": "Mover para Pasta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Prompt SOAP (sucinto)": {
+      "main": [
+        [
+          {
+            "node": "Gerar SOAP com Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Prompt SOAP (eloquente)": {
+      "main": [
+        [
+          {
+            "node": "Gerar SOAP com Claude (eloquente)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar SOAP com Claude (eloquente)": {
+      "main": [
+        [
+          {
+            "node": "Formatar Mensagem Final (sem avaliação)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mover para Pasta": {
+      "main": [
+        [
+          {
+            "node": "Montar Link do Doc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Link do Doc": {
+      "main": [
+        [
+          {
+            "node": "Salvar Status no Postgres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Documento1": {
+      "main": [
+        [
+          {
+            "node": "Aplicar Formatação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "daa70a6f-74f4-44b1-8dfb-6c4a6b159b19",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "668ae96acb2ef4098a95658cdbff472c13b75c00707305fdb85bb4dfe0eeee34"
+  },
+  "id": "hARyt0qbpfTOUeNQ",
+  "tags": []
+}

@@ -1,0 +1,574 @@
+{
+  "name": "SOAP → Consulta Urológica → TELEGRAM",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "7f295f08-bd45-441e-92c2-b3ed994f7d94",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1872,
+        160
+      ],
+      "webhookId": "1ef2858f-8cdc-42c4-9d41-9b27e7cc1d88",
+      "credentials": {
+        "telegramApi": {
+          "id": "OZI5LPj3cX6VrlPi",
+          "name": "Telegram Bot SOAP"
+        }
+      },
+      "notes": "ANTES DE USAR: crie uma credencial Telegram com seu token do BotFather e Base URL = https://transcriptionbot-production.up.railway.app — depois substitua o id 'CRIAR_CREDENCIAL_TELEGRAM' pelo id real."
+    },
+    {
+      "parameters": {
+        "jsCode": "const message = $json.message;\n\nif (!message) return [];\n\n// Aceita voice (gravação no app), audio (arquivo enviado) ou document\nconst tipos = ['voice', 'audio', 'document'];\nlet arquivo = null;\nlet mimeType = 'audio/ogg';\n\nfor (const tipo of tipos) {\n  if (message[tipo]) {\n    arquivo = message[tipo];\n    mimeType = arquivo.mime_type || (tipo === 'voice' ? 'audio/ogg' : 'audio/mpeg');\n    break;\n  }\n}\n\n// Se não for áudio, ignora silenciosamente (ex: mensagem de texto)\nif (!arquivo) return [];\n\nreturn [{\n  json: {\n    file_id: arquivo.file_id,\n    mime_type: mimeType,\n    chat_id: String(message.chat.id),\n    data_hora: new Date(message.date * 1000).toISOString()\n  }\n}];"
+      },
+      "id": "cf94b7b9-5471-4f40-a5c5-c90c0b55df23",
+      "name": "Extrair Arquivo de Áudio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1712,
+        160
+      ],
+      "notes": "Extrai file_id, mime_type e chat_id da mensagem do Telegram. Ignora mensagens que não sejam áudio."
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "⏳ Recebi seu áudio!\n\nEstou transcrevendo e redigindo a ata da reunião. Aguarde alguns instantes...",
+        "additionalFields": {}
+      },
+      "id": "1622dd02-ae99-474a-8d1e-f124bf904ee8",
+      "name": "Confirmar Recebimento",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -1568,
+        160
+      ],
+      "webhookId": "e4d3a47f-ee80-4aa7-b5d0-cdfea807471c",
+      "credentials": {
+        "telegramApi": {
+          "id": "OZI5LPj3cX6VrlPi",
+          "name": "Telegram Bot SOAP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst mimeType = $('Extrair Arquivo de Áudio').item.json.mime_type || 'audio/ogg';\n\nlet ext = 'oga';\nif (mimeType.includes('mpeg') || mimeType.includes('mp3')) ext = 'mp3';\nelse if (mimeType.includes('m4a') || mimeType.includes('mp4')) ext = 'm4a';\nelse if (mimeType.includes('wav')) ext = 'wav';\nelse if (mimeType.includes('webm')) ext = 'webm';\n\nfor (const item of items) {\n  if (item.binary && item.binary.data) {\n    item.binary.data.fileName = `audio.${ext}`;\n    item.binary.data.mimeType = mimeType;\n    item.binary.data.fileExtension = ext;\n  }\n}\n\nreturn items;"
+      },
+      "id": "cf5ea804-93bf-4e60-90da-80e1f1cadc0c",
+      "name": "Corrigir Metadados do Áudio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1040,
+        160
+      ],
+      "notes": "Define fileName e mimeType corretos no dado binário. Sem isso, a API do Whisper rejeita o arquivo com erro 'Invalid file format'."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/audio/transcriptions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "whisper-1"
+            },
+            {
+              "name": "language",
+              "value": "pt"
+            },
+            {
+              "name": "prompt",
+              "value": "Consulta médica urológica em português brasileiro. Termos comuns: próstata, HPB, hiperplasia prostática benigna, PSA, ressecção transuretral, RTU, prostatectomia, cistoscopia, biópsia transretal, fusão multiparamétrica, PI-RADS, Gleason, ISUP, IPSS, nictúria, disúria, polaciúria, hematúria, litíase, ureterolitotripsia, varicocele, hidrocele, criptorquidia, fimose, testosterona, ereção, ejaculação."
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "394dcc27-81a1-46d9-bd07-1204b1955f4e",
+      "name": "Transcrever com Whisper",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -880,
+        160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "UTeTErM4e9fQ3AI0",
+          "name": "OpenAI Header Auth"
+        }
+      },
+      "notes": "Reutiliza a credencial OpenAI do workflow anterior. O resultado da transcrição fica em $json.text."
+    },
+    {
+      "parameters": {
+        "operation": "createFromText",
+        "content": "={{ $json.conteudo }}",
+        "name": "=Consulta_SOAP_{{ $now.format('dd-MM-yyyy_HH-mm') }}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1xuxSA8wtspEEIQX7rOEo0CtUS1-n0gla",
+          "mode": "list",
+          "cachedResultName": "Consultas_SOAP",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1xuxSA8wtspEEIQX7rOEo0CtUS1-n0gla"
+        },
+        "options": {
+          "convertToGoogleDocument": true
+        }
+      },
+      "id": "f16fb21d-3cf9-4cee-bc87-6108389cb3d8",
+      "name": "Salvar no Google Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        320,
+        368
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Wyj1KOkra8N01jRh",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "Salva a ata como Google Document na raiz do seu Drive. REQUISITO: a API Google Docs deve estar ativada no Google Cloud Console do seu projeto OAuth."
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://api.telegram.org/file/bot' + $env.TELEGRAM_SOAP_BOT_TOKEN + '/' + $json.result.file_path }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1216,
+        160
+      ],
+      "id": "cd6c508e-a3c1-439f-9e51-8aac849e6a89",
+      "name": "Baixar Áudio"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://api.telegram.org/bot' + $env.TELEGRAM_SOAP_BOT_TOKEN + '/getFile' }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "file_id",
+              "value": "={{ $('Extrair Arquivo de Áudio').item.json.file_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1376,
+        160
+      ],
+      "id": "44a39c75-c9e4-4fb8-b48e-8821b0967d6f",
+      "name": "Obter Caminho do Arquivo"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a991d0c6-02f4-452d-95f2-6f088487da0e",
+              "name": "system_prompt",
+              "value": "=Você é um especialista em transcrição médica e documentação clínica, com expertise em Urologia. Sua tarefa é transformar a transcrição bruta de uma consulta urológica em um registro estruturado no formato SOAP, com filtros de relevância clínica e anonimização de dados pessoais.## REGRAS DE ANONIMIZAÇÃO (LGPD)Substitua TODAS as ocorrências de identificadores pessoais:- Nomes próprios (paciente, médico, familiares, terceiros) → [PACIENTE], [MÉDICO], [FAMILIAR], [TERCEIRO]- CPF, RG, números de telefone, e-mails → [DADO PESSOAL]- Endereços específicos → [ENDEREÇO]- Nomes de hospitais/clínicas → [INSTITUIÇÃO]- Datas de nascimento → preserve apenas a idadePRESERVE (são clinicamente relevantes, não são identificadores diretos):- Idade do paciente- Sexo/gênero- Profissão (apenas se relacionada à queixa)- Antecedentes familiares (sem nomes próprios)## CRITÉRIOS DE FILTRAGEMEXCLUA totalmente do registro:- Cumprimentos sociais, despedidas, agradecimentos- Conversas sobre clima, política, esportes, vida pessoal alheia à queixa- Pausas, hesitações verbais, repetições da fala- Comentários sobre ambiente do consultório- Interrupções administrativas (telefone, secretária, agendamento, valores, convênio)- Comentários do médico para si mesmo durante exames- Qualquer diálogo não-clínicoINCLUA com prioridade máxima:- Queixas e sintomas- História clínica e da doença atual- Hábitos de vida com relevância urológica- Antecedentes pessoais, cirúrgicos e familiares- Medicações em uso e alergias- Achados de exame físico relatados em voz alta- Resultados de exames laboratoriais e de imagem- Hipóteses diagnósticas, condutas e prescrições## FORMATAÇÃO DE EXAMES### Exames LaboratoriaisFormato: NOME: VALOR UNIDADE (referência: faixa, se mencionada)Use unidades padrão da medicina laboratorial brasileira, mesmo se não ditas em voz alta:- PSA total: ng/mL- PSA livre: ng/mL- Relação PSA livre/total: %- Testosterona total: ng/dL- Testosterona livre: pg/mL- Creatinina sérica: mg/dL- Ureia: mg/dL- TFG: mL/min/1,73m²- Hemoglobina: g/dL- Hematócrito: %- Glicemia de jejum: mg/dL- HbA1c: %- Cálcio sérico: mg/dL- Vitamina D (25-OH): ng/mL- Fosfatase alcalina: U/L- Sódio: mEq/L- Potássio: mEq/LPara exames qualitativos (EAS, urocultura, espermograma, citologia urinária): descreva os achados relatados, sem inventar.### Exames de ImagemFormato: NOME DO EXAME [data se mencionada]: descrição dos achados relevantes relatados.Tipos esperados em urologia: USG de vias urinárias, rins, bexiga ou próstata (suprapúbica ou transretal), TC de abdome, RM multiparamétrica de próstata (incluir PI-RADS se mencionado), cintilografia óssea, uretrocistografia miccional, urografia excretora, densitometria óssea.## ESTRUTURA DE SAÍDA — FORMATO SOAPUse exatamente este template. Omita qualquer seção ou campo que não tenha sido mencionado — NÃO invente informações.CONSULTA UROLÓGICA — [data, se mencionada; senão omita]S — SUBJETIVOIdentificação: [PACIENTE], [idade] anos, [sexo], [profissão se relevante]Queixa principal: [uma frase concisa]História da Doença Atual: [narrativa cronológica em terceira pessoa]Sintomas urinários:- Obstrutivos: jato fraco, hesitação, esforço, gotejamento, esvaziamento incompleto — apenas os relatados- Irritativos: urgência, polaciúria, nictúria (quantificada em episódios noturnos), disúria — apenas os relatados- Incontinência: tipo (esforço/urgência/mista) e gravidade- Hematúria: presença, micro ou macroscópica, inicial/terminal/totalFunção sexual: apenas se abordada — função erétil, libido, ejaculação, IIEF-5 se mencionadoAntecedentes:- Pessoais: comorbidades- Cirúrgicos: especialmente urológicos- Familiares: ênfase em câncer de próstata, urotelial, renal- Hábitos: tabagismo com carga tabágica se mencionada, etilismo, atividade físicaMedicações em uso: com dose, se mencionadaAlergias: medicamentosas e outrasO — OBJETIVOSinais vitais: apenas se mencionadosExame físico geral: achados relatadosExame urológico específico:- Abdome, flancos, loja renal- Genitália externa- Toque retal: volume prostático estimado, consistência, mobilidade, nódulos, sensibilidadeExames Laboratoriais:[lista formatada]Exames de Imagem:[lista formatada]A — AVALIAÇÃOHipóteses diagnósticas:1. principal2. diferenciais, se mencionadosEstadiamento / Classificação: se aplicável — TNM, Gleason, ISUP, D'Amico, IPSSP — PLANOExames complementares solicitados: listaTratamento medicamentoso: medicação, dose, posologia, duraçãoProcedimentos indicados: biópsia, cistoscopia, cirurgiaOrientações ao paciente: específicas, ditas pelo médicoRetorno: prazo e finalidade## REGRAS DE INTEGRIDADE CLÍNICA1. NÃO invente informações ausentes — se algo não foi dito, omita o campo2. NÃO faça interpretações ou diagnósticos próprios — limite-se ao que o médico falou3. NÃO complete dados com conhecimento médico geral4. Ambiguidade na transcrição: registre como [INAUDÍVEL] ou [AMBÍGUO: X ou Y]5. Use terminologia médica precisa em português6. Seja conciso — registros clínicos não são narrativas7. Se a transcrição for muito curta, pobre ou claramente um teste sem conteúdo clínico, retorne apenas: \"Transcrição insuficiente para gerar registro SOAP. Conteúdo não corresponde a uma consulta médica completa.\"",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -704,
+        160
+      ],
+      "id": "47365bdf-3891-4248-aef8-4f401297ded7",
+      "name": "Preparar Prompt SOAP"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({  model: 'claude-sonnet-4-5',  max_tokens: 8000,  system: $('Preparar Prompt SOAP').item.json.system_prompt,  messages: [{    role: 'user',    content: 'Processe esta transcrição de consulta urológica seguindo todas as regras:\\n\\n' + $('Transcrever com Whisper').item.json.text  }]}) }}",
+        "options": {}
+      },
+      "id": "822f5e71-8d47-490b-88a6-01915d8fd6e3",
+      "name": "Gerar SOAP com Claude",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -512,
+        160
+      ],
+      "notes": "Usa a variável ANTHROPIC_API_KEY de Settings > Variables. A ata fica em $json.content[0].text."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "242d39ad-19b6-4a51-a485-6772a8ea0c78",
+              "name": "evaluation_prompt",
+              "value": "Você é um avaliador especialista em qualidade de prontuários médicos urológicos. Receberá um registro SOAP gerado automaticamente a partir da transcrição de uma consulta e deve avaliá-lo quanto à completude clínica.  IMPORTANTE: avalie apenas o que está presente ou ausente — não critique a qualidade da consulta em si, apenas a completude do registro.  Retorne EXCLUSIVAMENTE um JSON válido neste formato, sem texto antes ou depois:  {   \"checklist\": {     \"S\": {       \"identificacao\": true,       \"queixa_principal\": true,       \"historia_doenca_atual\": true,       \"sintomas_urinarios\": true,       \"antecedentes\": false,       \"medicacoes\": false,       \"alergias\": false     },     \"O\": {       \"exame_fisico\": false,       \"exames_laboratoriais\": true,       \"exames_imagem\": true     },     \"A\": {       \"hipotese_diagnostica\": true,       \"estadiamento\": false     },     \"P\": {       \"exames_solicitados\": true,       \"tratamento_medicamentoso\": false,       \"procedimentos\": false,       \"orientacoes\": false,       \"retorno\": false     }   },   \"nota\": 6,   \"justificativa\": \"Registro adequado para o contexto clínico. Subjetivo completo na queixa principal e HDA. Objetivo com exames laboratoriais e de imagem bem descritos. Ausência de antecedentes e exame físico reduz a nota. Plano com apenas um item registrado.\",   \"alertas\": [] }  O campo \"alertas\" deve conter strings com avisos críticos apenas quando houver ausência de informação que pode impactar segurança do paciente. Exemplos: \"PSA elevado sem plano de investigação registrado\", \"Medicação nefrotóxica sem creatinina registrada\". Se não houver alertas, retorne array vazio.  A nota segue esta escala: 9-10: Registro excelente, todas as seções relevantes preenchidas 7-8: Registro bom, pequenas lacunas não críticas 5-6: Registro adequado, lacunas moderadas 3-4: Registro incompleto, lacunas importantes 1-2: Registro muito incompleto ou inadequado",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -352,
+        160
+      ],
+      "id": "5d12f195-5c50-4d1c-8e4c-dc74d4302c63",
+      "name": "Preparar Prompt Avaliação"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: 'claude-sonnet-4-5',\n  max_tokens: 1000,\n  system: $('Preparar Prompt Avaliação').item.json.evaluation_prompt,\n  messages: [{\n    role: 'user',\n    content: 'Avalie este registro SOAP:\\n\\n' + $('Gerar SOAP com Claude').item.json.content[0].text\n  }]\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -192,
+        160
+      ],
+      "id": "889ad548-b94b-474a-9095-273d4a368b68",
+      "name": "Avaliar Completude do SOAP"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d45fb75b-79e6-48ea-912b-75b0b65f5676",
+              "name": "mensagem_completa",
+              "value": "={{ \n  $('Gerar SOAP com Claude').item.json.content[0].text \n  + '\\n\\n─────────────────────\\n📊 AVALIAÇÃO DE COMPLETUDE\\n─────────────────────\\n' \n  + (() => {\n      const raw = $('Avaliar Completude do SOAP').item.json.content[0].text;\n      let av;\n      try { av = JSON.parse(raw.replace(/```json\\n?|\\n?```/g, '').trim()); } catch(e) { return '⚠️ Não foi possível avaliar o registro.'; }\n      \n      const icon = v => v ? '✅' : '⬜';\n      const s = av.checklist.S;\n      const o = av.checklist.O;\n      const a = av.checklist.A;\n      const p = av.checklist.P;\n      \n      let txt = '';\n      txt += 'S — SUBJETIVO\\n';\n      txt += icon(s.identificacao) + ' Identificação\\n';\n      txt += icon(s.queixa_principal) + ' Queixa principal\\n';\n      txt += icon(s.historia_doenca_atual) + ' História da doença atual\\n';\n      txt += icon(s.sintomas_urinarios) + ' Sintomas urinários\\n';\n      txt += icon(s.antecedentes) + ' Antecedentes\\n';\n      txt += icon(s.medicacoes) + ' Medicações\\n';\n      txt += icon(s.alergias) + ' Alergias\\n\\n';\n      \n      txt += 'O — OBJETIVO\\n';\n      txt += icon(o.exame_fisico) + ' Exame físico\\n';\n      txt += icon(o.exames_laboratoriais) + ' Exames laboratoriais\\n';\n      txt += icon(o.exames_imagem) + ' Exames de imagem\\n\\n';\n      \n      txt += 'A — AVALIAÇÃO\\n';\n      txt += icon(a.hipotese_diagnostica) + ' Hipótese diagnóstica\\n';\n      txt += icon(a.estadiamento) + ' Estadiamento\\n\\n';\n      \n      txt += 'P — PLANO\\n';\n      txt += icon(p.exames_solicitados) + ' Exames solicitados\\n';\n      txt += icon(p.tratamento_medicamentoso) + ' Tratamento medicamentoso\\n';\n      txt += icon(p.procedimentos) + ' Procedimentos\\n';\n      txt += icon(p.orientacoes) + ' Orientações\\n';\n      txt += icon(p.retorno) + ' Retorno\\n\\n';\n      \n      txt += 'NOTA: ' + av.nota + '/10\\n';\n      txt += av.justificativa;\n      \n      if (av.alertas && av.alertas.length > 0) {\n        txt += '\\n\\n⚠️ ALERTAS CLÍNICOS:\\n';\n        av.alertas.forEach(al => txt += '• ' + al + '\\n');\n      }\n      \n      return txt;\n    })()\n}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -32,
+        160
+      ],
+      "id": "3ecda645-60ae-4935-b360-83c28a52f690",
+      "name": "Formatar Mensagem Final"
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('Extrair Arquivo de Áudio').item.json.chat_id;\nconst mensagem = $('Formatar Mensagem Final').item.json.mensagem_completa;\n\nfunction dividir(texto, limite) {\n  const partes = [];\n  let atual = '';\n  for (const linha of texto.split('\\n')) {\n    if ((atual + '\\n' + linha).length > limite) {\n      if (atual) partes.push(atual.trim());\n      atual = linha;\n    } else {\n      atual = atual ? atual + '\\n' + linha : linha;\n    }\n  }\n  if (atual.trim()) partes.push(atual.trim());\n  return partes;\n}\n\nconst partes = dividir(mensagem, 4000);\n\nreturn partes.map((p, i) => ({\n  json: {\n    chat_id: chatId,\n    text: partes.length > 1 ? `📄 Parte ${i+1}/${partes.length}\\n\\n${p}` : p\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        144,
+        -32
+      ],
+      "id": "1cabef35-a4e9-4abf-97a3-3e6bc57a0f00",
+      "name": "Dividir Mensagem"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "34239c63-a272-47f1-a8ff-d970edcc0620",
+      "name": "Enviar SOAP no Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        304,
+        -32
+      ],
+      "webhookId": "d6541428-fd7a-4af9-80b5-29af1378682b",
+      "credentials": {
+        "telegramApi": {
+          "id": "OZI5LPj3cX6VrlPi",
+          "name": "Telegram Bot SOAP"
+        }
+      },
+      "notes": "Envia os primeiros 3800 caracteres da ata de volta ao chat. Textos maiores são truncados com aviso de que a versão completa está no Drive."
+    },
+    {
+      "parameters": {
+        "jsCode": "const texto = $('Formatar Mensagem Final').item.json.mensagem_completa;\n\nconst limpo = texto\n  .replace(/^### (.+)$/gm, '$1')\n  .replace(/^## (.+)$/gm, '$1')\n  .replace(/^# (.+)$/gm, '$1')\n  .replace(/\\*\\*(.+?)\\*\\*/g, '$1')\n  .replace(/^---+$/gm, '');\n\nreturn [{ json: { conteudo: limpo } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        240
+      ],
+      "id": "a52e5d4f-a359-44db-aac7-22e733c8c02d",
+      "name": "Limpar Markdown para Drive"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extrair Arquivo de Áudio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Arquivo de Áudio": {
+      "main": [
+        [
+          {
+            "node": "Confirmar Recebimento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmar Recebimento": {
+      "main": [
+        [
+          {
+            "node": "Obter Caminho do Arquivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Corrigir Metadados do Áudio": {
+      "main": [
+        [
+          {
+            "node": "Transcrever com Whisper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcrever com Whisper": {
+      "main": [
+        [
+          {
+            "node": "Preparar Prompt SOAP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baixar Áudio": {
+      "main": [
+        [
+          {
+            "node": "Corrigir Metadados do Áudio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obter Caminho do Arquivo": {
+      "main": [
+        [
+          {
+            "node": "Baixar Áudio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Prompt SOAP": {
+      "main": [
+        [
+          {
+            "node": "Gerar SOAP com Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar SOAP com Claude": {
+      "main": [
+        [
+          {
+            "node": "Preparar Prompt Avaliação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Prompt Avaliação": {
+      "main": [
+        [
+          {
+            "node": "Avaliar Completude do SOAP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Avaliar Completude do SOAP": {
+      "main": [
+        [
+          {
+            "node": "Formatar Mensagem Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Mensagem Final": {
+      "main": [
+        [
+          {
+            "node": "Dividir Mensagem",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Limpar Markdown para Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dividir Mensagem": {
+      "main": [
+        [
+          {
+            "node": "Enviar SOAP no Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limpar Markdown para Drive": {
+      "main": [
+        [
+          {
+            "node": "Salvar no Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "8db33feb-97de-493d-88fd-c4b7d9749a7c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "668ae96acb2ef4098a95658cdbff472c13b75c00707305fdb85bb4dfe0eeee34"
+  },
+  "id": "iykO7OHdd5ou1LgQ",
+  "tags": []
+}
