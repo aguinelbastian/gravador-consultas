@@ -1,0 +1,27 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="clip">
+      <rect width="512" height="512" rx="76"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#clip)">
+    <!-- Fundo navy escuro -->
+    <rect width="512" height="512" fill="#0f1d2b"/>
+
+    <!-- Arco exterior do G — teal, atrás -->
+    <!-- Simulado com um anel recortado por um retângulo branco à esquerda -->
+    <circle cx="256" cy="256" r="170" fill="#3bbaa8"/>
+    <circle cx="256" cy="256" r="90" fill="#0f1d2b"/>
+
+    <!-- Corte do arco à direita (abertura do G) — remove parte direita superior -->
+    <rect x="246" y="76" width="190" height="200" fill="#0f1d2b"/>
+
+    <!-- Braço horizontal do G — claro, frente -->
+    <rect x="220" y="216" width="186" height="80" rx="40"
+          fill="#c8d5e0"/>
+
+    <!-- Haste vertical direita do G — clara, frente -->
+    <rect x="326" y="216" width="80" height="160" rx="40"
+          fill="#c8d5e0"/>
+  </g>
+</svg>
