@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gravador de Consultas</title>
+<title>Estruturador de Consultas SOAP</title>
 <!-- Favicon (aba do navegador) -->
 <link rel="icon" type="image/svg+xml" href="./icon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="./icon-32.png">
@@ -355,7 +355,7 @@
     <img src="./icon.svg" alt="" class="brand-icon">
     <div class="brand">
       <div class="brand-mark">Urologia · Consultório</div>
-      <div class="brand-title">Gravador <span>Clínico</span></div>
+      <div class="brand-title">Estruturador de SOAP <span>Clínico</span></div>
     </div>
   </div>
   <button class="settings-btn" id="settingsBtn" title="Configurações">⚙</button>
@@ -417,8 +417,8 @@
 
   <!-- Recorder -->
   <div class="card recorder" id="recorderCard">
-    <div class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">Pronto para gravar</span></div>
-    <div class="timer"><span id="timerDisplay">00:00</span><span class="sub" id="timerSub">Tempo de gravação</span></div>
+    <div class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">Pronto para estruturar</span></div>
+    <div class="timer"><span id="timerDisplay">00:00</span><span class="sub" id="timerSub">Tempo de estruturação</span></div>
     <button class="rec-button" id="recButton">Iniciar</button>
     <div class="meta">
       <div><strong id="metaSize">—</strong> &nbsp;estimativa</div>
@@ -703,7 +703,7 @@ async function startRecording() {
   state.timerInterval = setInterval(updateTimer, 250);
   if('wakeLock' in navigator){try{state.wakeLock=await navigator.wakeLock.request('screen');}catch{}}
 
-  setStatus('Gravando…','recording');
+  setStatus('Estruturando…','recording');
   els.recButton.textContent='Parar'; els.recButton.classList.add('recording');
   els.timerSub.textContent='Em andamento';
   window.onbeforeunload = () => 'Gravação em andamento. Deseja sair?';
@@ -830,7 +830,7 @@ function resetState() {
     els.processingTitle.textContent='Processando consulta…';
     els.processingSub.textContent='Transcrevendo e gerando o SOAP.\nLeva de 1 a 3 minutos. Não feche esta aba.';
   }
-  setStatus('Pronto para gravar');
+  setStatus('Pronto para estruturar');
 }
 
 // ── Events ──
@@ -856,7 +856,7 @@ document.addEventListener('visibilitychange', async () => {
 
 // ── Init ──
 loadSettings();
-setStatus('Pronto para gravar');
+setStatus('Pronto para estruturar');
 </script>
 </body>
 </html>
