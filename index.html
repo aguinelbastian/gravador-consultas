@@ -448,12 +448,22 @@
 
   <!-- Processing -->
   <div class="card processing-card" id="processingCard">
-    <div class="processing-icon">⚙️</div>
+    <div class="processing-icon" id="processingIcon">⚙️</div>
     <div class="processing-title" id="processingTitle">Processando consulta…</div>
     <div class="processing-sub" id="processingSub">Transcrevendo e gerando o SOAP.<br>Leva de 1 a 3 minutos. Não feche esta aba.</div>
-    <div class="progress indeterminate" style="background:var(--border)"><div class="progress-bar"></div></div>
+    <div class="progress indeterminate" id="processingProgress" style="background:var(--border)"><div class="progress-bar"></div></div>
     <div style="font-size:11px;color:var(--ink-mute)" id="pollStatus">Verificando…</div>
-    <button class="btn btn-secondary" id="cancelPollBtn" style="width:100%">Cancelar verificação</button>
+
+    <!-- Botões durante polling normal -->
+    <div id="processingActionsNormal">
+      <button class="btn btn-secondary" id="cancelPollBtn" style="width:100%">Cancelar verificação</button>
+    </div>
+
+    <!-- Botões em estado de erro recuperável (áudio preservado) -->
+    <div id="processingActionsError" class="actions hidden">
+      <button class="btn btn-secondary" id="discardAfterErrorBtn">Descartar</button>
+      <button class="btn btn-primary" id="resendBtn">Reenviar áudio</button>
+    </div>
   </div>
 
   <!-- Result -->
@@ -514,6 +524,9 @@ const els = {
   audioPreview:$('audioPreview'), previewDuration:$('previewDuration'), previewSize:$('previewSize'),
   uploadProgress:$('uploadProgress'), sendBtn:$('sendBtn'), discardBtn:$('discardBtn'),
   processingCard:$('processingCard'), pollStatus:$('pollStatus'), cancelPollBtn:$('cancelPollBtn'),
+  processingIcon:$('processingIcon'), processingProgress:$('processingProgress'),
+  processingActionsNormal:$('processingActionsNormal'), processingActionsError:$('processingActionsError'),
+  resendBtn:$('resendBtn'), discardAfterErrorBtn:$('discardAfterErrorBtn'),
   processingTitle:$('processingTitle'), processingSub:$('processingSub'),
   resultCard:$('resultCard'), resultDocName:$('resultDocName'),
   openDocBtn:$('openDocBtn'), newConsultaBtn:$('newConsultaBtn'),
@@ -777,9 +790,8 @@ async function pollStatus_fn() {
   state.pollCount++;
   els.pollStatus.textContent = `Verificação ${state.pollCount}/${state.MAX_POLLS}…`;
   if(state.pollCount > state.MAX_POLLS) {
-    stopPolling();
-    toast('Tempo esgotado. O documento deve estar no Drive mesmo assim.','error');
-    resetState(); return;
+    showRecoverableError('Tempo esgotado aguardando resposta do servidor.');
+    return;
   }
   try {
     const url = `${els.statusUrl.value}?id=${encodeURIComponent(state.consultaId)}`;
@@ -795,6 +807,76 @@ async function pollStatus_fn() {
 function stopPolling() {
   clearInterval(state.pollInterval); state.pollInterval=null;
   els.processingCard.classList.remove('open');
+}
+
+// ── Estado de erro recuperável (áudio preservado para reenvio) ──
+function showRecoverableError(motivo) {
+  // Só aplica ao modo SOAP — modo Relatório não tem blob para reenviar
+  if(modoAtual !== 'soap' || !state.recordedBlob) {
+    resetState();
+    if(motivo) toast(motivo, 'error');
+    return;
+  }
+  stopPolling();
+  // Mantém o processingCard aberto, mas reconfigura o conteúdo
+  els.processingCard.classList.add('open');
+  els.recorderCard.classList.add('hidden');
+  els.processingIcon.textContent = '⚠️';
+  els.processingTitle.textContent = 'Processamento interrompido';
+  els.processingSub.innerHTML = (motivo || 'O processamento demorou mais que o esperado.') +
+    '<br>Sua gravação está preservada — você pode reenviar ou descartar.';
+  els.processingProgress.classList.add('hidden');
+  els.pollStatus.textContent = '';
+  els.processingActionsNormal.classList.add('hidden');
+  els.processingActionsError.classList.remove('hidden');
+  setStatus('Aguardando ação','error');
+}
+
+async function resendAudio() {
+  if(!state.recordedBlob) {
+    toast('Sem áudio para reenviar.','error');
+    return;
+  }
+  // Restaura UI do processingCard para o estado normal
+  els.processingIcon.textContent = '⚙️';
+  els.processingTitle.textContent = 'Reenviando consulta…';
+  els.processingSub.innerHTML = 'Transcrevendo e gerando o SOAP.<br>Leva de 1 a 3 minutos. Não feche esta aba.';
+  els.processingProgress.classList.remove('hidden');
+  els.processingActionsError.classList.add('hidden');
+  els.processingActionsNormal.classList.remove('hidden');
+
+  // Novo consulta_id (a execução anterior pode ter deixado registros sujos)
+  state.consultaId = genId();
+  state.pollCount = 0;
+
+  const ext = state.mimeType.includes('ogg')?'ogg':state.mimeType.includes('mp4')?'m4a':'webm';
+  const ts = new Date().toISOString().replace(/[:.]/g,'-');
+  const fd = new FormData();
+  fd.append('audio', state.recordedBlob, `consulta_${ts}.${ext}`);
+  fd.append('consulta_id', state.consultaId);
+  fd.append('timestamp', new Date().toISOString());
+  fd.append('duration_seconds', String(Math.round(state.recordedDuration)));
+  fd.append('resend', '1');
+  const contexto = contextoTexto.value.trim();
+  if(contexto) fd.append('contexto', contexto);
+
+  setStatus('Reenviando…','sending');
+  try {
+    const res = await fetch(els.webhookUrl.value,{method:'POST',body:fd});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    setStatus('Processando…','polling');
+    startPolling();
+    toast('Áudio reenviado','success');
+  } catch(err) {
+    showRecoverableError('Falha ao reenviar: '+err.message);
+  }
+}
+
+function discardAfterError() {
+  if(confirm('Descartar a gravação? Esta ação é definitiva.')) {
+    resetState();
+    toast('Gravação descartada');
+  }
 }
 
 function showResult(link, name) {
@@ -813,6 +895,12 @@ function resetState() {
   els.timerDisplay.textContent='00:00'; els.timerSub.textContent='Tempo de gravação';
   els.metaSize.textContent='—'; els.sendBtn.disabled=false; els.discardBtn.disabled=false;
   [els.previewCard,els.processingCard,els.resultCard].forEach(el=>el.classList.remove('open'));
+
+  // Restaura o processingCard ao estado normal (caso tenha ido para erro recuperável antes)
+  els.processingIcon.textContent='⚙️';
+  els.processingProgress.classList.remove('hidden');
+  els.processingActionsError.classList.add('hidden');
+  els.processingActionsNormal.classList.remove('hidden');
 
   // ✅ CORREÇÃO: limpa o campo de contexto ao iniciar nova consulta
   contextoTexto.value = '';
@@ -842,9 +930,18 @@ els.discardBtn.addEventListener('click', () => {
   if(confirm('Descartar a gravação?')){ resetState(); toast('Gravação descartada'); }
 });
 els.cancelPollBtn.addEventListener('click', () => {
-  stopPolling(); toast('Verificação cancelada. O documento estará no Drive quando pronto.');
-  resetState();
+  // Modo Relatório: não há áudio para preservar — comportamento antigo
+  if(modoAtual !== 'soap' || !state.recordedBlob) {
+    stopPolling();
+    toast('Verificação cancelada. O documento estará no Drive quando pronto.');
+    resetState();
+    return;
+  }
+  // Modo SOAP: vai para o estado de erro recuperável (áudio preservado)
+  showRecoverableError('Verificação cancelada.');
 });
+els.resendBtn.addEventListener('click', resendAudio);
+els.discardAfterErrorBtn.addEventListener('click', discardAfterError);
 els.newConsultaBtn.addEventListener('click', resetState);
 
 document.addEventListener('visibilitychange', async () => {
