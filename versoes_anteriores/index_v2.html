@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gravador de Consultas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..900,0..100&family=Public+Sans:wght@300..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#f3ede0; --surface:#fbf7ed; --ink:#1c1611; --ink-soft:#4a3f33; --ink-mute:#8a7c6a;
+    --rule:#d8cdb6; --rule-soft:#e8e0c9; --accent:#7a2d1f; --accent-hover:#5d2117;
+    --record:#c83a2a; --success:#2d4f30; --warning:#a07026; --error:#8b3a1f; --blue:#000080;
+    --shadow-sm:0 1px 2px rgba(28,22,17,.04); --shadow-lg:0 12px 40px rgba(28,22,17,.12);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { min-height:100%; font-family:'Public Sans',system-ui,sans-serif; color:var(--ink); background:var(--bg); -webkit-font-smoothing:antialiased; }
+  body { display:flex; flex-direction:column; align-items:center; padding:32px 20px; }
+  .container { width:100%; max-width:560px; display:flex; flex-direction:column; gap:24px; }
+
+  header { display:flex; align-items:baseline; justify-content:space-between; padding-bottom:20px; border-bottom:1px solid var(--rule); }
+  .brand-mark { font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-mute); font-weight:500; }
+  .brand-title { font-family:'Fraunces',serif; font-weight:500; font-size:26px; letter-spacing:-.02em; line-height:1; }
+  .brand-title em { font-style:italic; font-weight:400; color:var(--ink-soft); }
+  .settings-btn { background:transparent; border:1px solid var(--rule); color:var(--ink-soft); width:34px; height:34px; border-radius:50%; cursor:pointer; display:grid; place-items:center; transition:all .18s; font-size:15px; }
+  .settings-btn:hover { background:var(--surface); border-color:var(--ink-soft); color:var(--ink); }
+
+  .card { background:var(--surface); border:1px solid var(--rule); border-radius:12px; padding:28px; box-shadow:var(--shadow-sm); }
+
+  .settings { display:none; flex-direction:column; gap:16px; }
+  .settings.open { display:flex; }
+  .settings-title { font-family:'Fraunces',serif; font-size:13px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-soft); padding-bottom:12px; border-bottom:1px solid var(--rule-soft); }
+  .field { display:flex; flex-direction:column; gap:6px; }
+  .field label { font-size:11px; font-weight:600; color:var(--ink-soft); letter-spacing:.05em; text-transform:uppercase; }
+  .field input, .field select { background:var(--bg); border:1px solid var(--rule); border-radius:6px; padding:9px 11px; font-size:13px; font-family:inherit; color:var(--ink); }
+  .field input[type="url"] { font-family:'IBM Plex Mono',monospace; font-size:11px; }
+
+  /* Seletor de modo */
+  .mode-selector { display:flex; gap:0; background:var(--bg); border:1px solid var(--rule); border-radius:8px; padding:3px; }
+  .mode-btn { flex:1; padding:9px; border:none; border-radius:6px; font-family:'Public Sans',sans-serif; font-size:12px; font-weight:500; cursor:pointer; background:transparent; color:var(--ink-mute); transition:all .18s; letter-spacing:.03em; }
+  .mode-btn.active { background:var(--surface); color:var(--ink); box-shadow:var(--shadow-sm); }
+
+  /* Relatório */
+  .relatorio-card { display:none; flex-direction:column; gap:18px; padding:28px; }
+  .relatorio-card.open { display:flex; }
+  .relatorio-title { font-family:'Fraunces',serif; font-size:18px; font-weight:500; }
+  .relatorio-hint { font-size:12px; color:var(--ink-mute); line-height:1.6; }
+  .relatorio-card textarea { background:var(--bg); border:1px solid var(--rule); border-radius:6px; padding:12px; font-size:12px; font-family:'IBM Plex Mono',monospace; color:var(--ink); resize:vertical; min-height:180px; line-height:1.6; transition:border-color .15s; }
+  .relatorio-card textarea:focus { outline:none; border-color:var(--accent); }
+  .relatorio-card textarea.obs { min-height:60px; font-family:'Public Sans',sans-serif; font-size:13px; }
+  .field input:focus, .field select:focus { outline:none; border-color:var(--accent); }
+  .field-hint { font-size:11px; color:var(--ink-mute); line-height:1.5; }
+  .field-hint code { font-family:'IBM Plex Mono',monospace; background:var(--bg); padding:1px 4px; border-radius:3px; font-size:10px; }
+  .checkbox { display:flex; align-items:center; gap:10px; cursor:pointer; }
+  .checkbox input { width:auto; }
+  .checkbox label { font-size:13px; text-transform:none; letter-spacing:normal; cursor:pointer; color:var(--ink-soft); }
+
+  .recorder { display:flex; flex-direction:column; align-items:center; gap:28px; padding:40px 28px; }
+  .status-pill { display:inline-flex; align-items:center; gap:8px; padding:6px 14px; background:var(--bg); border:1px solid var(--rule); border-radius:100px; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-soft); font-weight:500; }
+  .status-pill .dot { width:6px; height:6px; border-radius:50%; background:var(--ink-mute); }
+  .status-pill.recording { background:rgba(200,58,42,.08); border-color:rgba(200,58,42,.25); color:var(--record); }
+  .status-pill.recording .dot { background:var(--record); animation:pulse 1.4s infinite; }
+  .status-pill.sending { background:rgba(160,112,38,.08); border-color:rgba(160,112,38,.25); color:var(--warning); }
+  .status-pill.polling { background:rgba(0,0,128,.06); border-color:rgba(0,0,128,.2); color:var(--blue); }
+  .status-pill.polling .dot { background:var(--blue); animation:pulse 1.4s infinite; }
+  .status-pill.success { background:rgba(45,79,48,.08); border-color:rgba(45,79,48,.25); color:var(--success); }
+  .status-pill.error { background:rgba(139,58,31,.08); border-color:rgba(139,58,31,.3); color:var(--error); }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.4)} }
+
+  .timer { font-family:'IBM Plex Mono',monospace; font-size:60px; font-weight:400; letter-spacing:-.02em; font-variant-numeric:tabular-nums; line-height:1; text-align:center; }
+  .timer .sub { font-size:12px; color:var(--ink-mute); display:block; margin-top:8px; letter-spacing:.04em; text-transform:uppercase; font-family:'Public Sans',sans-serif; font-weight:500; }
+
+  .rec-button { position:relative; width:170px; height:170px; border-radius:50%; border:none; cursor:pointer; background:var(--ink); color:var(--surface); font-family:'Fraunces',serif; font-weight:500; font-size:21px; letter-spacing:.04em; text-transform:uppercase; transition:all .25s cubic-bezier(.4,0,.2,1); box-shadow:0 8px 24px rgba(28,22,17,.18); }
+  .rec-button:hover { transform:translateY(-2px); box-shadow:0 12px 32px rgba(28,22,17,.24); }
+  .rec-button:active { transform:translateY(0); }
+  .rec-button.recording { background:var(--record); box-shadow:0 8px 24px rgba(200,58,42,.28); }
+  .rec-button.recording::before { content:''; position:absolute; inset:-8px; border-radius:50%; border:2px solid var(--record); opacity:0; animation:rec-ring 2s infinite; }
+  .rec-button.recording::after { content:''; position:absolute; inset:-16px; border-radius:50%; border:2px solid var(--record); opacity:0; animation:rec-ring 2s infinite .6s; }
+  @keyframes rec-ring { 0%{opacity:.6;transform:scale(.95)} 100%{opacity:0;transform:scale(1.15)} }
+  .rec-button:disabled { opacity:.5; cursor:not-allowed; transform:none !important; }
+
+  .meta { display:flex; gap:24px; font-size:12px; color:var(--ink-mute); letter-spacing:.04em; }
+  .meta strong { color:var(--ink-soft); font-weight:500; }
+
+  .preview { display:none; flex-direction:column; gap:18px; }
+  .preview.open { display:flex; }
+  .preview-title { font-family:'Fraunces',serif; font-size:18px; font-weight:500; }
+  .preview-info { display:flex; gap:20px; font-size:12px; color:var(--ink-mute); padding:10px 0; border-top:1px solid var(--rule-soft); border-bottom:1px solid var(--rule-soft); }
+  .preview-info span { font-family:'IBM Plex Mono',monospace; color:var(--ink-soft); font-weight:500; }
+  audio { width:100%; height:38px; }
+  .actions { display:flex; gap:10px; }
+  .btn { flex:1; padding:13px 18px; border-radius:8px; border:1px solid transparent; font-family:inherit; font-size:13px; font-weight:500; cursor:pointer; transition:all .15s; }
+  .btn-primary { background:var(--accent); color:white; }
+  .btn-primary:hover { background:var(--accent-hover); }
+  .btn-secondary { background:transparent; color:var(--ink-soft); border-color:var(--rule); }
+  .btn-secondary:hover { color:var(--ink); border-color:var(--ink-soft); }
+  .btn:disabled { opacity:.5; cursor:not-allowed; }
+
+  .processing-card { display:none; flex-direction:column; gap:14px; align-items:center; padding:32px 28px; text-align:center; }
+  .processing-card.open { display:flex; }
+  .processing-icon { font-size:36px; animation:spin 2s linear infinite; }
+  @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  .processing-title { font-family:'Fraunces',serif; font-size:18px; font-weight:500; }
+  .processing-sub { font-size:12px; color:var(--ink-mute); line-height:1.6; }
+  .progress { height:4px; background:var(--rule-soft); border-radius:2px; overflow:hidden; margin-top:6px; width:100%; }
+  .progress.indeterminate .progress-bar { height:100%; background:var(--blue); width:30%; animation:indet 1.5s infinite linear; }
+  @keyframes indet { 0%{transform:translateX(-100%)} 100%{transform:translateX(420%)} }
+
+  .result-card { display:none; flex-direction:column; gap:18px; align-items:center; padding:36px 28px; text-align:center; }
+  .result-card.open { display:flex; }
+  .result-icon { font-size:44px; }
+  .result-title { font-family:'Fraunces',serif; font-size:22px; font-weight:500; }
+  .result-sub { font-size:13px; color:var(--ink-mute); line-height:1.6; }
+  .result-doc-name { font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-soft); background:var(--bg); padding:8px 14px; border-radius:6px; border:1px solid var(--rule); word-break:break-all; }
+  .result-actions { display:flex; gap:10px; width:100%; flex-direction:column; }
+  .btn-open { display:block; width:100%; padding:15px; border-radius:8px; background:var(--blue); color:white; text-decoration:none; font-weight:600; font-size:14px; text-align:center; transition:opacity .15s; }
+  .btn-open:hover { opacity:.9; }
+
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(100px); background:var(--ink); color:var(--surface); padding:13px 22px; border-radius:8px; font-size:13px; box-shadow:var(--shadow-lg); opacity:0; transition:all .3s; pointer-events:none; z-index:100; max-width:90vw; }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast.error { background:var(--error); }
+  .toast.success { background:var(--success); }
+
+  footer { margin-top:16px; text-align:center; font-size:11px; color:var(--ink-mute); letter-spacing:.04em; }
+  footer .sep { margin:0 8px; opacity:.5; }
+  .hidden { display:none !important; }
+
+  /* Contexto do paciente */
+  .contexto-toggle { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; background:var(--surface); border:1px solid var(--rule); border-radius:8px; cursor:pointer; transition:all .18s; }
+  .contexto-toggle:hover { border-color:var(--ink-soft); }
+  .contexto-toggle-label { display:flex; align-items:center; gap:10px; font-size:12px; font-weight:500; color:var(--ink-soft); letter-spacing:.04em; text-transform:uppercase; }
+  .contexto-toggle-label .icon { font-size:15px; }
+  .contexto-badge { font-size:10px; background:var(--accent); color:white; padding:2px 7px; border-radius:100px; display:none; }
+  .contexto-badge.visible { display:inline-block; }
+  .contexto-chevron { font-size:11px; color:var(--ink-mute); transition:transform .2s; }
+  .contexto-chevron.open { transform:rotate(180deg); }
+  .contexto-body { display:none; flex-direction:column; gap:10px; padding:16px; background:var(--surface); border:1px solid var(--rule); border-top:none; border-radius:0 0 8px 8px; margin-top:-1px; }
+  .contexto-body.open { display:flex; }
+  .contexto-body textarea { background:var(--bg); border:1px solid var(--rule); border-radius:6px; padding:10px 12px; font-size:12px; font-family:'IBM Plex Mono',monospace; color:var(--ink); resize:vertical; min-height:100px; line-height:1.6; transition:border-color .15s; }
+  .contexto-body textarea:focus { outline:none; border-color:var(--accent); }
+  .contexto-hint { font-size:11px; color:var(--ink-mute); line-height:1.5; }
+  .contexto-clear { align-self:flex-end; background:transparent; border:1px solid var(--rule); color:var(--ink-mute); font-size:11px; padding:4px 10px; border-radius:5px; cursor:pointer; font-family:inherit; transition:all .15s; }
+  .contexto-clear:hover { border-color:var(--error); color:var(--error); }
+
+  @media(max-width:480px) {
+    body { padding:20px 12px; }
+    .recorder { padding:28px 16px; }
+    .card { padding:20px; }
+    .timer { font-size:46px; }
+    .rec-button { width:150px; height:150px; font-size:18px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="brand">
+      <div class="brand-mark">Consultório · Urologia</div>
+      <h1 class="brand-title">Gravador <em>de Consultas</em></h1>
+    </div>
+    <button class="settings-btn" id="settingsBtn" title="Configurações">⚙</button>
+  </header>
+
+  <div class="card settings" id="settingsCard">
+    <div class="settings-title">Configurações</div>
+    <div class="field">
+      <label for="webhookUrl">URL do Webhook (envio do áudio)</label>
+      <input type="url" id="webhookUrl" placeholder="https://n8n-production-xxxx.up.railway.app/webhook/soap-web">
+      <div class="field-hint">Node <code>Webhook Trigger</code> do workflow principal.</div>
+    </div>
+    <div class="field">
+      <label for="statusUrl">URL do Webhook de Status</label>
+      <input type="url" id="statusUrl" placeholder="https://n8n-production-xxxx.up.railway.app/webhook/soap-status">
+      <div class="field-hint">Node <code>Webhook Trigger</code> do workflow <code>SOAP Status (polling)</code>.</div>
+    </div>
+    <div class="field">
+      <label for="historicoUrl">URL do Webhook de Histórico</label>
+      <input type="url" id="historicoUrl" placeholder="https://n8n-production-xxxx.up.railway.app/webhook/historico-medico">
+      <div class="field-hint">Workflow <code>SOAP → Histórico Médico → Relatório</code>.</div>
+    </div>
+    <div class="field">
+      <label for="bitrate">Qualidade de Áudio</label>
+      <select id="bitrate">
+        <option value="24000">Baixa (24 kbps) — 1h ≈ 11 MB</option>
+        <option value="32000" selected>Padrão (32 kbps) — 1h ≈ 14 MB</option>
+        <option value="48000">Alta (48 kbps) — 1h ≈ 21 MB</option>
+        <option value="64000">Máxima (64 kbps) — 1h ≈ 28 MB</option>
+      </select>
+    </div>
+    <div class="checkbox">
+      <input type="checkbox" id="autoSend">
+      <label for="autoSend">Enviar automaticamente ao parar de gravar</label>
+    </div>
+  </div>
+
+  <!-- Contexto do paciente (colapsado) -->
+  <div>
+    <div class="contexto-toggle" id="contextoToggle">
+      <div class="contexto-toggle-label">
+        <span class="icon">📋</span>
+        Contexto do paciente
+        <span class="contexto-badge" id="contextoBadge">preenchido</span>
+      </div>
+      <span class="contexto-chevron" id="contextoChevron">▼</span>
+    </div>
+    <div class="contexto-body" id="contextoBody">
+      <textarea id="contextoTexto" placeholder="Cole aqui SOAPs anteriores, resumos de consultas ou qualquer contexto clínico relevante do paciente…"></textarea>
+      <div class="contexto-hint">Opcional. Quando preenchido, o Claude usa esse contexto para enriquecer o SOAP — tratando como seguimento se a consulta anterior for recente, ou como antecedentes se for antiga.</div>
+      <button class="contexto-clear" id="contextoClear">Limpar</button>
+    </div>
+  </div>
+
+  <!-- Seletor de modo -->
+  <div class="mode-selector">
+    <button class="mode-btn active" id="modeSoap">🎙 Consulta (SOAP)</button>
+    <button class="mode-btn" id="modeRelatorio">📋 Relatório de Histórico</button>
+  </div>
+
+  <!-- Card de relatório -->
+  <div class="card relatorio-card" id="relatorioCard">
+    <div class="relatorio-title">Relatório de Histórico Médico</div>
+    <div class="relatorio-hint">Cole abaixo os registros SOAP do paciente. O Claude irá consolidar, estruturar e gerar um relatório de histórico médico no Google Drive.</div>
+    <div class="field">
+      <label>SOAPs do paciente</label>
+      <textarea id="relatorioSoaps" placeholder="Cole aqui todos os SOAPs do paciente, um após o outro. Não precisa formatar — o Claude vai organizar."></textarea>
+    </div>
+    <div class="field">
+      <label>Observações adicionais <span style="font-weight:400;text-transform:none;letter-spacing:normal;color:var(--ink-mute)">(opcional)</span></label>
+      <textarea id="relatorioObs" class="obs" placeholder="Ex: Focar na evolução do PSA. Incluir linha do tempo cirúrgica."></textarea>
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary" id="gerarRelatorioBtn">Gerar relatório</button>
+    </div>
+  </div>
+
+  <div class="card recorder" id="recorderCard">
+    <div class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">Pronto para gravar</span></div>
+    <div class="timer"><span id="timerDisplay">00:00</span><span class="sub" id="timerSub">Tempo de gravação</span></div>
+    <button class="rec-button" id="recButton">Iniciar</button>
+    <div class="meta">
+      <div><strong id="metaSize">—</strong> · estimativa</div>
+      <div><strong id="metaFormat">WebM</strong> · formato</div>
+    </div>
+  </div>
+
+  <div class="card preview" id="previewCard">
+    <div>
+      <div class="preview-title">Pré-escuta</div>
+      <div class="preview-info">
+        <div>Duração: <span id="previewDuration">—</span></div>
+        <div>Tamanho: <span id="previewSize">—</span></div>
+      </div>
+    </div>
+    <audio id="audioPreview" controls></audio>
+    <div id="uploadProgress" class="hidden">
+      <div style="font-size:12px;color:var(--ink-mute);margin-bottom:5px">Enviando áudio…</div>
+      <div class="progress indeterminate"><div class="progress-bar"></div></div>
+    </div>
+    <div class="actions">
+      <button class="btn btn-secondary" id="discardBtn">Descartar</button>
+      <button class="btn btn-primary" id="sendBtn">Enviar para n8n</button>
+    </div>
+  </div>
+
+  <div class="card processing-card" id="processingCard">
+    <div class="processing-icon">⚙️</div>
+    <div class="processing-title" id="processingTitle">Processando consulta…</div>
+    <div class="processing-sub" id="processingSub">Transcrevendo e gerando o SOAP.<br>Leva de 1 a 3 minutos. Não feche esta aba.</div>
+    <div class="progress indeterminate"><div class="progress-bar"></div></div>
+    <div style="font-size:11px;color:var(--ink-mute)" id="pollStatus">Verificando…</div>
+    <button class="btn btn-secondary" id="cancelPollBtn" style="width:100%">Cancelar verificação</button>
+  </div>
+
+  <div class="card result-card" id="resultCard">
+    <div class="result-icon">✅</div>
+    <div class="result-title">SOAP pronto!</div>
+    <div class="result-sub">O documento foi gerado e salvo no Google Drive, já formatado.</div>
+    <div class="result-doc-name" id="resultDocName">—</div>
+    <div class="result-actions">
+      <a class="btn-open" id="openDocBtn" href="#" target="_blank" rel="noopener">Abrir documento no Google Docs</a>
+      <button class="btn btn-secondary" id="newConsultaBtn" style="width:100%">Nova consulta</button>
+    </div>
+  </div>
+
+  <footer>
+    Áudio enviado ao n8n · Documento formatado no Google Drive
+    <span class="sep">·</span>
+    Configurações salvas localmente
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+const state = {
+  mediaRecorder:null, stream:null, chunks:[], recordingStart:null, timerInterval:null,
+  wakeLock:null, recordedBlob:null, recordedDuration:0, mimeType:'',
+  consultaId:null, pollInterval:null, pollCount:0, MAX_POLLS:60
+};
+
+const $ = id => document.getElementById(id);
+const els = {
+  settingsBtn:$('settingsBtn'), settingsCard:$('settingsCard'),
+  webhookUrl:$('webhookUrl'), statusUrl:$('statusUrl'), bitrate:$('bitrate'), autoSend:$('autoSend'),
+  statusPill:$('statusPill'), statusText:$('statusText'),
+  timerDisplay:$('timerDisplay'), timerSub:$('timerSub'), recButton:$('recButton'),
+  metaSize:$('metaSize'), metaFormat:$('metaFormat'),
+  recorderCard:$('recorderCard'), previewCard:$('previewCard'),
+  audioPreview:$('audioPreview'), previewDuration:$('previewDuration'), previewSize:$('previewSize'),
+  uploadProgress:$('uploadProgress'), sendBtn:$('sendBtn'), discardBtn:$('discardBtn'),
+  processingCard:$('processingCard'), pollStatus:$('pollStatus'), cancelPollBtn:$('cancelPollBtn'),
+  processingTitle:$('processingTitle'), processingSub:$('processingSub'),
+  resultCard:$('resultCard'), resultDocName:$('resultDocName'), openDocBtn:$('openDocBtn'), newConsultaBtn:$('newConsultaBtn'),
+  toast:$('toast')
+};
+
+function loadSettings() {
+  const saved = localStorage.getItem('gravador-config-v3');
+  if (saved) {
+    const c = JSON.parse(saved);
+    if (c.webhookUrl) els.webhookUrl.value = c.webhookUrl;
+    if (c.statusUrl) els.statusUrl.value = c.statusUrl;
+    if (c.bitrate) els.bitrate.value = c.bitrate;
+    if (c.autoSend !== undefined) els.autoSend.checked = c.autoSend;
+  }
+  if (!els.webhookUrl.value || !els.statusUrl.value) els.settingsCard.classList.add('open');
+}
+function saveSettings() {
+  localStorage.setItem('gravador-config-v3', JSON.stringify({
+    webhookUrl:els.webhookUrl.value, statusUrl:els.statusUrl.value,
+    bitrate:els.bitrate.value, autoSend:els.autoSend.checked
+  }));
+}
+['change','blur'].forEach(ev => [els.webhookUrl,els.statusUrl,els.bitrate,els.autoSend].forEach(el => el.addEventListener(ev, saveSettings)));
+els.settingsBtn.addEventListener('click', () => els.settingsCard.classList.toggle('open'));
+
+let toastTimer;
+function toast(msg, type='') { els.toast.textContent = msg; els.toast.className = 'toast show '+type; clearTimeout(toastTimer); toastTimer = setTimeout(()=>els.toast.className='toast', 4500); }
+function setStatus(text, type='') { els.statusText.textContent = text; els.statusPill.className = 'status-pill '+type; }
+
+function fmtTime(s) { const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60),p=n=>String(n).padStart(2,'0'); return h>0?`${p(h)}:${p(m)}:${p(sec)}`:`${p(m)}:${p(sec)}`; }
+function fmtSize(b) { if(b<1024)return b+' B'; if(b<1048576)return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
+function updateTimer() { if(!state.recordingStart)return; const e=(Date.now()-state.recordingStart)/1000; els.timerDisplay.textContent=fmtTime(e); els.metaSize.textContent=fmtSize((parseInt(els.bitrate.value)*e)/8); }
+function pickMimeType() { for(const m of ['audio/webm;codecs=opus','audio/ogg;codecs=opus','audio/webm','audio/mp4']) if(MediaRecorder.isTypeSupported(m))return m; return ''; }
+function genId() { return 'consulta_' + Date.now() + '_' + Math.random().toString(36).substr(2,6); }
+
+async function startRecording() {
+  if (!els.webhookUrl.value || !els.statusUrl.value) {
+    toast('Configure as URLs de webhook primeiro','error');
+    els.settingsCard.classList.add('open'); return;
+  }
+  try {
+    state.stream = await navigator.mediaDevices.getUserMedia({ audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true} });
+  } catch { toast('Permissão de microfone negada','error'); return; }
+
+  state.mimeType = pickMimeType();
+  const ext = state.mimeType.includes('ogg')?'ogg':state.mimeType.includes('mp4')?'m4a':'webm';
+  els.metaFormat.textContent = ext.toUpperCase();
+  const opts = { audioBitsPerSecond:parseInt(els.bitrate.value) };
+  if (state.mimeType) opts.mimeType = state.mimeType;
+
+  state.mediaRecorder = new MediaRecorder(state.stream, opts);
+  state.chunks = [];
+  state.mediaRecorder.ondataavailable = e => { if(e.data?.size>0) state.chunks.push(e.data); };
+  state.mediaRecorder.onstop = () => {
+    state.recordedBlob = new Blob(state.chunks, { type:state.mimeType||'audio/webm' });
+    state.recordedDuration = (Date.now()-state.recordingStart)/1000;
+    cleanupStream(); showPreview();
+    if (els.autoSend.checked) sendToWebhook();
+  };
+  state.recordingStart = Date.now();
+  state.mediaRecorder.start(1000);
+  state.timerInterval = setInterval(updateTimer, 250);
+  if ('wakeLock' in navigator) { try { state.wakeLock = await navigator.wakeLock.request('screen'); } catch {} }
+  setStatus('Gravando…','recording');
+  els.recButton.textContent='Parar'; els.recButton.classList.add('recording'); els.timerSub.textContent='Em andamento';
+  window.onbeforeunload = () => 'Gravação em andamento. Deseja sair?';
+}
+
+function stopRecording() {
+  if (state.mediaRecorder?.state !== 'inactive') state.mediaRecorder.stop();
+  clearInterval(state.timerInterval);
+  els.recButton.textContent='Iniciar'; els.recButton.classList.remove('recording');
+  setStatus('Processando…'); window.onbeforeunload=null;
+  if (state.wakeLock) { state.wakeLock.release().catch(()=>{}); state.wakeLock=null; }
+}
+function cleanupStream() { state.stream?.getTracks().forEach(t=>t.stop()); state.stream=null; }
+
+function showPreview() {
+  els.audioPreview.src = URL.createObjectURL(state.recordedBlob);
+  els.previewDuration.textContent = fmtTime(state.recordedDuration);
+  els.previewSize.textContent = fmtSize(state.recordedBlob.size);
+  els.previewCard.classList.add('open'); els.recorderCard.classList.add('hidden');
+  setStatus('Pré-escute e envie');
+}
+
+async function sendToWebhook() {
+  if (!state.recordedBlob) return;
+  state.consultaId = genId();
+
+  els.uploadProgress.classList.remove('hidden');
+  els.sendBtn.disabled = true; els.discardBtn.disabled = true;
+  setStatus('Enviando…','sending');
+
+  const ext = state.mimeType.includes('ogg')?'ogg':state.mimeType.includes('mp4')?'m4a':'webm';
+  const ts = new Date().toISOString().replace(/[:.]/g,'-');
+  const fd = new FormData();
+  fd.append('audio', state.recordedBlob, `consulta_${ts}.${ext}`);
+  fd.append('consulta_id', state.consultaId);
+  fd.append('timestamp', new Date().toISOString());
+  fd.append('duration_seconds', String(Math.round(state.recordedDuration)));
+  const contexto = contextoTexto.value.trim();
+  if (contexto) fd.append('contexto', contexto);
+
+  try {
+    const res = await fetch(els.webhookUrl.value, { method:'POST', body:fd });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    els.previewCard.classList.remove('open');
+    showProcessing();
+    startPolling();
+  } catch (err) {
+    setStatus('Erro no envio','error');
+    toast('Erro: '+err.message,'error');
+    els.sendBtn.disabled=false; els.discardBtn.disabled=false;
+  } finally {
+    els.uploadProgress.classList.add('hidden');
+  }
+}
+
+function showProcessing() {
+  els.processingCard.classList.add('open');
+  els.recorderCard.classList.add('hidden');
+  setStatus('Processando…','polling');
+}
+
+function startPolling() {
+  state.pollCount = 0;
+  // Primeira verificação após 15s (dá tempo do fluxo começar)
+  setTimeout(() => {
+    pollStatus();
+    state.pollInterval = setInterval(pollStatus, 5000);
+  }, 15000);
+}
+
+async function pollStatus() {
+  state.pollCount++;
+  els.pollStatus.textContent = `Verificação ${state.pollCount}/${state.MAX_POLLS}…`;
+  if (state.pollCount > state.MAX_POLLS) {
+    stopPolling();
+    toast('Tempo esgotado. O documento deve estar no Drive mesmo assim.','error');
+    resetState(); return;
+  }
+  try {
+    const url = `${els.statusUrl.value}?id=${encodeURIComponent(state.consultaId)}`;
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.status === 'pronto' && data.doc_link) {
+      stopPolling();
+      showResult(data.doc_link, data.doc_name);
+    }
+  } catch (err) {
+    console.warn('Poll error:', err.message);
+  }
+}
+
+function stopPolling() {
+  clearInterval(state.pollInterval); state.pollInterval=null;
+  els.processingCard.classList.remove('open');
+}
+
+function showResult(link, name) {
+  els.openDocBtn.href = link;
+  els.resultDocName.textContent = name || 'Documento SOAP';
+  els.resultCard.classList.add('open');
+  els.recorderCard.classList.add('hidden');
+  setStatus('SOAP pronto ✓','success');
+  toast('Documento gerado com sucesso!','success');
+}
+
+function resetState() {
+  stopPolling();
+  state.recordedBlob=null; state.recordedDuration=0; state.chunks=[];
+  state.recordingStart=null; state.consultaId=null; state.pollCount=0;
+  els.timerDisplay.textContent='00:00'; els.timerSub.textContent='Tempo de gravação'; els.metaSize.textContent='—';
+  els.sendBtn.disabled=false; els.discardBtn.disabled=false;
+  [els.previewCard,els.processingCard,els.resultCard].forEach(el=>el.classList.remove('open'));
+  els.recorderCard.classList.remove('hidden');
+  if (modoAtual === 'relatorio') {
+    els.recorderCard.classList.add('hidden');
+    relatorioCard.classList.add('open');
+    els.processingTitle.textContent = 'Gerando relatório…';
+    els.processingSub.textContent = 'O Claude está analisando os SOAPs e estruturando o histórico.';
+  } else {
+    els.processingTitle.textContent = 'Processando consulta…';
+    els.processingSub.textContent = 'Transcrevendo e gerando o SOAP.\nLeva de 1 a 3 minutos. Não feche esta aba.';
+  }
+  if (els.audioPreview.src) { URL.revokeObjectURL(els.audioPreview.src); els.audioPreview.src=''; }
+  setStatus('Pronto para gravar');
+}
+
+els.recButton.addEventListener('click', () => {
+  if (state.mediaRecorder?.state === 'recording') stopRecording();
+  else startRecording();
+});
+els.sendBtn.addEventListener('click', sendToWebhook);
+els.discardBtn.addEventListener('click', () => { if(confirm('Descartar a gravação?')){ resetState(); toast('Gravação descartada'); } });
+els.cancelPollBtn.addEventListener('click', () => { stopPolling(); toast('Verificação cancelada. O documento estará no Drive quando pronto.'); resetState(); });
+els.newConsultaBtn.addEventListener('click', resetState);
+
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState==='visible' && state.mediaRecorder?.state==='recording' && 'wakeLock' in navigator && !state.wakeLock) {
+    try { state.wakeLock = await navigator.wakeLock.request('screen'); } catch {}
+  }
+});
+
+// ===== Contexto do paciente =====
+const contextoToggle  = document.getElementById('contextoToggle');
+const contextoBody    = document.getElementById('contextoBody');
+const contextoChevron = document.getElementById('contextoChevron');
+const contextoTexto   = document.getElementById('contextoTexto');
+const contextoBadge   = document.getElementById('contextoBadge');
+const contextoClear   = document.getElementById('contextoClear');
+
+contextoToggle.addEventListener('click', () => {
+  contextoBody.classList.toggle('open');
+  contextoChevron.classList.toggle('open');
+});
+contextoTexto.addEventListener('input', () => {
+  contextoBadge.classList.toggle('visible', contextoTexto.value.trim().length > 0);
+});
+contextoClear.addEventListener('click', () => {
+  contextoTexto.value = '';
+  contextoBadge.classList.remove('visible');
+});
+
+// ===== Modo relatório =====
+const modeSoapBtn      = document.getElementById('modeSoap');
+const modeRelatorioBtn = document.getElementById('modeRelatorio');
+const relatorioCard    = document.getElementById('relatorioCard');
+const relatorioSoaps   = document.getElementById('relatorioSoaps');
+const relatorioObs     = document.getElementById('relatorioObs');
+const gerarRelatorioBtn = document.getElementById('gerarRelatorioBtn');
+const historicoUrlEl   = document.getElementById('historicoUrl');
+
+let modoAtual = 'soap'; // 'soap' | 'relatorio'
+
+function setModo(modo) {
+  modoAtual = modo;
+  if (modo === 'soap') {
+    modeSoapBtn.classList.add('active');
+    modeRelatorioBtn.classList.remove('active');
+    els.recorderCard.classList.remove('hidden');
+    relatorioCard.classList.remove('open');
+  } else {
+    modeRelatorioBtn.classList.add('active');
+    modeSoapBtn.classList.remove('active');
+    els.recorderCard.classList.add('hidden');
+    relatorioCard.classList.add('open');
+  }
+}
+
+modeSoapBtn.addEventListener('click', () => setModo('soap'));
+modeRelatorioBtn.addEventListener('click', () => setModo('relatorio'));
+
+gerarRelatorioBtn.addEventListener('click', async () => {
+  const soaps = relatorioSoaps.value.trim();
+  if (!soaps) { toast('Cole ao menos um SOAP antes de gerar.', 'error'); return; }
+  const url = historicoUrlEl.value.trim();
+  if (!url) { toast('Configure a URL do webhook de histórico nas configurações.', 'error'); return; }
+
+  gerarRelatorioBtn.disabled = true;
+  gerarRelatorioBtn.textContent = 'Enviando…';
+  setStatus('Enviando SOAPs…', 'sending');
+
+  state.consultaId = genId();
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        consulta_id: state.consultaId,
+        soaps: soaps,
+        observacoes: relatorioObs.value.trim() || null
+      })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    relatorioCard.classList.remove('open');
+    els.processingCard.classList.add('open');
+    els.processingTitle.textContent = 'Gerando relatório…';
+    els.processingSub.textContent = 'O Claude está analisando os SOAPs e estruturando o histórico. Pode levar 1-2 minutos.';
+    setStatus('Processando…', 'polling');
+    startPolling();
+
+  } catch (err) {
+    toast('Erro: ' + err.message, 'error');
+    setStatus('Erro no envio', 'error');
+  } finally {
+    gerarRelatorioBtn.disabled = false;
+    gerarRelatorioBtn.textContent = 'Gerar relatório';
+  }
+});
+
+// Atualiza loadSettings e saveSettings para incluir historicoUrl
+const _origLoad = loadSettings;
+function loadSettings() {
+  const saved = localStorage.getItem('gravador-config-v3');
+  if (saved) {
+    const c = JSON.parse(saved);
+    if (c.webhookUrl)  els.webhookUrl.value  = c.webhookUrl;
+    if (c.statusUrl)   els.statusUrl.value   = c.statusUrl;
+    if (c.historicoUrl) historicoUrlEl.value = c.historicoUrl;
+    if (c.bitrate)     els.bitrate.value     = c.bitrate;
+    if (c.autoSend !== undefined) els.autoSend.checked = c.autoSend;
+  }
+  if (!els.webhookUrl.value || !els.statusUrl.value) els.settingsCard.classList.add('open');
+}
+historicoUrlEl.addEventListener('change', () => {
+  const saved = localStorage.getItem('gravador-config-v3');
+  const c = saved ? JSON.parse(saved) : {};
+  c.historicoUrl = historicoUrlEl.value;
+  localStorage.setItem('gravador-config-v3', JSON.stringify(c));
+});
+historicoUrlEl.addEventListener('blur', () => historicoUrlEl.dispatchEvent(new Event('change')));
+
+loadSettings();
+setStatus('Pronto para gravar');
+</script>
+</body>
+</html>
