@@ -224,30 +224,35 @@
   }
 
   .rec-button {
-    position:relative; width:172px; height:172px; border-radius:50%;
-    border:none; cursor:pointer;
-    background:linear-gradient(135deg, var(--accent) 0%, #1d4ed8 100%);
-    color:white; font-family:'Inter',sans-serif; font-weight:700;
-    font-size:14px; letter-spacing:.08em; text-transform:uppercase;
-    transition:all .25s cubic-bezier(.4,0,.2,1);
-    box-shadow:0 8px 32px var(--accent-glow), 0 0 0 1px rgba(37,99,235,.3);
+    position:relative; padding:13px 24px; border-radius:24px;
+    border:1px solid var(--border); cursor:pointer;
+    background:var(--bg2);
+    color:var(--ink-soft); font-family:'Inter',sans-serif; font-weight:500;
+    font-size:14px; letter-spacing:0;
+    display:inline-flex; align-items:center; gap:10px;
+    transition:all .2s ease;
   }
-  .rec-button:hover { transform:translateY(-3px); box-shadow:0 12px 40px var(--accent-glow), 0 0 0 1px rgba(37,99,235,.5); }
-  .rec-button:active { transform:translateY(0); }
+  .rec-button::before {
+    content:''; width:8px; height:8px; border-radius:50%;
+    background:var(--ink-mute); transition:background .25s, opacity .25s;
+    flex-shrink:0;
+  }
+  .rec-button:hover {
+    border-color:var(--accent); color:var(--ink);
+  }
   .rec-button.recording {
-    background:linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-    box-shadow:0 8px 32px var(--record-dim), 0 0 0 1px rgba(239,68,68,.4);
+    border-color:rgba(16,185,129,.5);
+    color:var(--ink);
   }
   .rec-button.recording::before {
-    content:''; position:absolute; inset:-10px; border-radius:50%;
-    border:2px solid var(--record); opacity:0; animation:rec-ring 2s infinite;
+    background:var(--success);
+    animation:pulse-dot 1.8s ease-in-out infinite;
   }
-  .rec-button.recording::after {
-    content:''; position:absolute; inset:-20px; border-radius:50%;
-    border:1px solid var(--record); opacity:0; animation:rec-ring 2s infinite .7s;
+  @keyframes pulse-dot {
+    0%, 100% { opacity:1; }
+    50%      { opacity:.35; }
   }
-  @keyframes rec-ring { 0%{opacity:.5;transform:scale(.94)} 100%{opacity:0;transform:scale(1.12)} }
-  .rec-button:disabled { opacity:.4; cursor:not-allowed; transform:none !important; }
+  .rec-button:disabled { opacity:.4; cursor:not-allowed; }
 
   .meta { display:flex; gap:24px; font-size:12px; color:var(--ink-mute); }
   .meta strong { color:var(--ink-soft); font-weight:600; font-family:'IBM Plex Mono',monospace; }
@@ -343,7 +348,7 @@
     .recorder { padding:28px 16px; }
     .card { padding:20px; }
     .timer { font-size:48px; }
-    .rec-button { width:152px; height:152px; font-size:13px; }
+    .rec-button { padding:12px 20px; font-size:13px; }
   }
 </style>
 </head>
@@ -419,7 +424,7 @@
   <div class="card recorder" id="recorderCard">
     <div class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">Pronto para estruturar</span></div>
     <div class="timer"><span id="timerDisplay">00:00</span><span class="sub" id="timerSub">Tempo de estruturação</span></div>
-    <button class="rec-button" id="recButton">Iniciar</button>
+    els.recButton.textContent='Iniciar consulta'; els.recButton.classList.remove('recording');
     <div class="meta">
       <div><strong id="metaSize">—</strong> &nbsp;estimativa</div>
       <div><strong id="metaFormat">WebM</strong> &nbsp;formato</div>
@@ -717,7 +722,7 @@ async function startRecording() {
   if('wakeLock' in navigator){try{state.wakeLock=await navigator.wakeLock.request('screen');}catch{}}
 
   setStatus('Estruturando…','recording');
-  els.recButton.textContent='Parar'; els.recButton.classList.add('recording');
+  els.recButton.textContent='Pausar consulta'; els.recButton.classList.add('recording');
   els.timerSub.textContent='Em andamento';
   window.onbeforeunload = () => 'Gravação em andamento. Deseja sair?';
 }
@@ -725,7 +730,7 @@ async function startRecording() {
 function stopRecording() {
   if(state.mediaRecorder?.state!=='inactive') state.mediaRecorder.stop();
   clearInterval(state.timerInterval);
-  els.recButton.textContent='Iniciar'; els.recButton.classList.remove('recording');
+  els.recButton.textContent='Iniciar consulta'; els.recButton.classList.remove('recording');
   setStatus('Processando…'); window.onbeforeunload=null;
   if(state.wakeLock){state.wakeLock.release().catch(()=>{});state.wakeLock=null;}
 }
