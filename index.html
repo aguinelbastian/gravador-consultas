@@ -254,6 +254,27 @@
   }
   .rec-button:disabled { opacity:.4; cursor:not-allowed; }
 
+  /* Indicador de atividade (substitui o cronômetro grande) */
+  .activity-indicator {
+    display:flex; justify-content:center; align-items:center;
+    gap:10px; height:48px;
+  }
+  .activity-indicator span {
+    width:9px; height:9px; border-radius:50%;
+    background:var(--ink-mute); opacity:.25;
+    transition:background .3s;
+  }
+  .activity-indicator.recording span {
+    background:var(--success);
+    animation:activity-pulse 1.4s ease-in-out infinite;
+  }
+  .activity-indicator.recording span:nth-child(2) { animation-delay:.2s; }
+  .activity-indicator.recording span:nth-child(3) { animation-delay:.4s; }
+  @keyframes activity-pulse {
+    0%,100% { opacity:.25; transform:scale(.85); }
+    50%     { opacity:1;   transform:scale(1.15); }
+  }
+
   .meta { display:flex; gap:24px; font-size:12px; color:var(--ink-mute); }
   .meta strong { color:var(--ink-soft); font-weight:600; font-family:'IBM Plex Mono',monospace; }
 
@@ -423,9 +444,12 @@
   <!-- Recorder -->
   <div class="card recorder" id="recorderCard">
     <div class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">Pronto para estruturar</span></div>
-    <div class="timer"><span id="timerDisplay">00:00</span><span class="sub" id="timerSub">Tempo de estruturação</span></div>
+    <div class="activity-indicator" id="activityIndicator" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </div>
     <button class="rec-button" id="recButton">Iniciar consulta</button>
     <div class="meta">
+      <div><strong id="metaTimer">00:00</strong> &nbsp;tempo</div>
       <div><strong id="metaSize">—</strong> &nbsp;estimativa</div>
       <div><strong id="metaFormat">WebM</strong> &nbsp;formato</div>
     </div>
@@ -523,7 +547,7 @@ const els = {
   settingsBtn:$('settingsBtn'), settingsCard:$('settingsCard'),
   webhookUrl:$('webhookUrl'), statusUrl:$('statusUrl'), bitrate:$('bitrate'), autoSend:$('autoSend'),
   statusPill:$('statusPill'), statusText:$('statusText'),
-  timerDisplay:$('timerDisplay'), timerSub:$('timerSub'), recButton:$('recButton'),
+  activityIndicator:$('activityIndicator'), metaTimer:$('metaTimer'), recButton:$('recButton'),
   metaSize:$('metaSize'), metaFormat:$('metaFormat'),
   recorderCard:$('recorderCard'), previewCard:$('previewCard'),
   audioPreview:$('audioPreview'), previewDuration:$('previewDuration'), previewSize:$('previewSize'),
@@ -592,7 +616,7 @@ function fmtSize(b) {
 function updateTimer() {
   if(!state.recordingStart)return;
   const e=(Date.now()-state.recordingStart)/1000;
-  els.timerDisplay.textContent=fmtTime(e);
+  els.metaTimer.textContent=fmtTime(e);
   els.metaSize.textContent=fmtSize((parseInt(els.bitrate.value)*e)/8);
 }
 function pickMimeType() {
@@ -723,7 +747,7 @@ async function startRecording() {
 
   setStatus('Estruturando…','recording');
   els.recButton.textContent='Pausar consulta'; els.recButton.classList.add('recording');
-  els.timerSub.textContent='Em andamento';
+  els.activityIndicator.classList.add('recording');
   window.onbeforeunload = () => 'Gravação em andamento. Deseja sair?';
 }
 
@@ -731,6 +755,7 @@ function stopRecording() {
   if(state.mediaRecorder?.state!=='inactive') state.mediaRecorder.stop();
   clearInterval(state.timerInterval);
   els.recButton.textContent='Iniciar consulta'; els.recButton.classList.remove('recording');
+  els.activityIndicator.classList.remove('recording');
   setStatus('Processando…'); window.onbeforeunload=null;
   if(state.wakeLock){state.wakeLock.release().catch(()=>{});state.wakeLock=null;}
 }
@@ -897,7 +922,8 @@ function resetState() {
   stopPolling();
   state.recordedBlob=null; state.recordedDuration=0; state.chunks=[];
   state.recordingStart=null; state.consultaId=null; state.pollCount=0;
-  els.timerDisplay.textContent='00:00'; els.timerSub.textContent='Tempo de gravação';
+  els.metaTimer.textContent='00:00';
+  els.activityIndicator.classList.remove('recording');
   els.metaSize.textContent='—'; els.sendBtn.disabled=false; els.discardBtn.disabled=false;
   [els.previewCard,els.processingCard,els.resultCard].forEach(el=>el.classList.remove('open'));
 
